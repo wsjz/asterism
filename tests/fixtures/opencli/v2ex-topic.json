@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1,
+    "title": "♥ Introducing Project Babel 2.0",
+    "content": "Project Babel 2.0 is here.\r\n\r\n你可能会觉得眼前的这个网站实在太简陋，你的感觉是对的，因为这个网站的 Mobile 版本先上线了，这个版本为所有的 iDevice 优化。接下来我会从各方面来给网站一个尽量详尽的解释。\r\n\r\n首先，这个网站的技术架构和之前的 V2EX 完全不同。之前的 V2EX 跑在 LAMP 上，而现在的新版本跑在 Google 的云里。\r\n\r\n因此，这个版本所面临的第一个挑战是将以前的业务逻辑尽可能地在 GAE 上用 Python 实现，但是这里的有些技术和 LAMP 实在是太不相同了。比如 SELECT COUNT() 对大部分 LAMP 应用来说是小 case，很多时候一些数据不对，一句 SELECT COUNT() 就可以修复。但是同样的细节问题到了 GAE 上就会增加很多的复杂度。不过我对解决所有的这些 code 问题有充足信心。\r\n\r\n所以你暂时不会在这里看到以前的内容。但是在未来的某个时间点，我想，以前的内容会逐步在这里出现，以一种最优雅的方式。\r\n\r\n正如我之前提到的，目前你所看到的是移动版。这个简单的版本先上线了。\r\n\r\n为什么呢？\r\n\r\n事情和两年前不太一样了，以前用 iPhone / iPod Touch / iPad 上网的人没现在那么多。而且目前 designed for iPhone 的好网站实在太少，除了 Google Reader 和 Techmeme 外，我几乎想不起来任何其他为 iPhone 优化过的我想每天上的网站。那么，为什么不自己创造一个呢？\r\n\r\n大家知道，中国人做网站最痛苦的事情不是技术，甚至不是钱，而是每天担心几件事情：\r\n\r\n1. 硬盘烧掉。国内的机房的电压和空调都不那么可靠。\r\n\r\n2. 服务器被抱走。这个不用我多说，你们明白。\r\n\r\n所以，V2EX 2.0 跑在 Google App Engine 上，意味着这个网站基本上和上述两个问题绝缘。\r\n\r\n当然，还有第 3 个问题──墙。我做好了充分的心理准备，V2EX 2.0 在上线的 24 小时内就被墙。但是那又有什么关系呢？我知道国内 Twitter 用户都超过 5 万了，淘宝上 VPN 买卖一搜一大把，谁还用担心这个呢？\r\n\r\n这是我接下来的计划：\r\n\r\n★ V2EX 上以前闪闪发光的那些东西在这里都会有。比如“自言自语”和“ Pointless ”。\r\n\r\n★ 如果你想在这里写博客，也未尝不可。我会逐步把我的另外一个项目 Project Picky，集成到这里。\r\n\r\n★ 这里会有一个 JSON API。任何人都可以使用，甚至可以用它开发商业应用。（我希望这一天早点到来）\r\n\r\n★ RSS / Atom / Sitemap / PubSubHubbub / Microformat / Open Graph 甚至 OAuth ... 能整的我都会给它整上。\r\n\r\n★ 这里的所有代码会在不久后开源，放在 Google Code 或者 hg.io 或者 GitHub 上，我还在研究。欢迎来用，也欢迎来骂。\r\n\r\n★ 以前 V2EX 复杂但是政治上正确的 edit 功能还在调试中。所以目前暂时不能 edit。所以 submit 之前最好先看一眼自己写了些什么。\r\n\r\n★ 会有 Desktop 版或 iPad 版。\r\n\r\n★ 这里将会有和 Twitter 的良好集成。\r\n\r\n★ 测试一段时间之后，我会将 V2EX.com 这个域名指到这里。\r\n\r\n★ 关于发图，img.ly 会在最短时间内得到支持。\r\n\r\n★ 希望这个网站能够陪伴大家度过大量良好美好的马桶和床上的时光！\r\n\r\n反正现在没有谁能够把我的服务器抱走了。于是我不会再睡不着觉了。于是我每天睡醒之后可以去彻底专注于创作了。\r\n\r\nOK，以上。\r\n\r\nHave a nice day.",
+    "member": "Livid",
+    "created": 1272207387,
+    "node": "Project Babel",
+    "replies": 178,
+    "url": "https://www.v2ex.com/t/1"
+  }
+]

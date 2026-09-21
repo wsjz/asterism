@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Test and tool caches
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# macOS and editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local Asterism vault data
+.asterism-data/
+asterism.local.toml
+/state/*
+!/state/.gitkeep
+/logs/*
+!/logs/.gitkeep
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local source-output sandboxes. Keep their documentation in Git while
+# ignoring every collected note, including nested output directories.
+/notes/apple-notes/*
+!/notes/apple-notes/README.md
+/notes/flomo/*
+!/notes/flomo/README.md
+/notes/cubox/*
+!/notes/cubox/README.md
+/notes/markdown/*
+!/notes/markdown/README.md
+/notes/notion/*
+!/notes/notion/README.md
+/notes/opencli-*/
+
+# Digests, archives, and inboxes when this repository is used as a vault
+/digest/
+/archive/
+/inbox/
+
+# Sensitive local configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.token

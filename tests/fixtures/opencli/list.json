@@ -1,0 +1,279 @@
+[
+ {
+  "site": "12306",
+  "name": "login",
+  "description": "Open 12306 login and wait until the browser session is authenticated",
+  "access": "write",
+  "strategy": "cookie",
+  "browser": true,
+  "args": [
+   {
+    "name": "timeout",
+    "type": "int",
+    "default": 300,
+    "required": false,
+    "help": "Maximum seconds to wait for the user to finish login"
+   }
+  ],
+  "columns": [
+   "status",
+   "logged_in",
+   "site",
+   "user_name"
+  ],
+  "command": "12306/login"
+ },
+ {
+  "site": "devto",
+  "name": "read",
+  "description": "Read a DEV.to article body by id",
+  "access": "read",
+  "strategy": "public",
+  "browser": false,
+  "args": [
+   {
+    "name": "id",
+    "type": "str",
+    "required": true,
+    "positional": true,
+    "help": "DEV.to article id (numeric, e.g. 3605688)"
+   },
+   {
+    "name": "max-length",
+    "type": "int",
+    "default": 20000,
+    "required": false,
+    "help": "Max characters of body to return (min 100)"
+   }
+  ],
+  "columns": [
+   "id",
+   "title",
+   "author",
+   "reactions",
+   "reading_time",
+   "tags",
+   "published_at",
+   "body",
+   "url"
+  ],
+  "command": "devto/read"
+ },
+ {
+  "site": "flomo",
+  "name": "memos",
+  "description": "List your Flomo memos",
+  "access": "read",
+  "strategy": "cookie",
+  "browser": true,
+  "args": [
+   {
+    "name": "limit",
+    "type": "int",
+    "default": 20,
+    "required": false,
+    "help": "Number of memos to fetch (1-200)"
+   },
+   {
+    "name": "since",
+    "type": "int",
+    "required": false,
+    "help": "Only memos updated after this Unix timestamp in seconds"
+   },
+   {
+    "name": "slug",
+    "type": "str",
+    "required": false,
+    "help": "Pagination cursor from a previous memo page"
+   }
+  ],
+  "columns": [
+   "id",
+   "url",
+   "content",
+   "slug",
+   "tags",
+   "images",
+   "created_at",
+   "updated_at"
+  ],
+  "command": "flomo/memos"
+ },
+ {
+  "site": "hackernews",
+  "name": "top",
+  "description": "Hacker News top stories",
+  "access": "read",
+  "strategy": "public",
+  "browser": false,
+  "args": [
+   {
+    "name": "limit",
+    "type": "int",
+    "default": 20,
+    "required": false,
+    "help": "Number of stories"
+   }
+  ],
+  "columns": [
+   "rank",
+   "id",
+   "title",
+   "score",
+   "author",
+   "comments",
+   "url"
+  ],
+  "command": "hackernews/top"
+ },
+ {
+  "site": "twitter",
+  "name": "bookmarks",
+  "description": "Fetch your Twitter/X bookmarks (the logged-in user's saved tweets, newest first)",
+  "access": "read",
+  "strategy": "cookie",
+  "browser": true,
+  "args": [
+   {
+    "name": "limit",
+    "type": "int",
+    "default": 20,
+    "required": false,
+    "help": "Maximum number of bookmarks to return (default 20). Ignored when --all is set."
+   },
+   {
+    "name": "all",
+    "type": "bool",
+    "default": false,
+    "required": false,
+    "help": "Fetch all bookmark pages until exhausted. Prefer --output-file for large archives."
+   },
+   {
+    "name": "resume-file",
+    "type": "string",
+    "required": false,
+    "help": "Resume file for long-running all-pages bookmark syncs."
+   },
+   {
+    "name": "output-file",
+    "type": "string",
+    "required": false,
+    "help": "Write all-page results to JSONL. Requires --all and --resume-file."
+   },
+   {
+    "name": "max-pages",
+    "type": "int",
+    "required": false,
+    "help": "Optional pagination safety cap (default 100; raised automatically with --all)."
+   },
+   {
+    "name": "top-by-engagement",
+    "type": "int",
+    "default": 0,
+    "required": false,
+    "help": "When set to N>0, re-rank the bookmarks by weighted engagement (likes×1 + retweets×3 + replies×2 + bookmarks×5 + log10(views+1)×0.5) and return the top N. Default 0 keeps the API's native (saved-time) ordering. Incompatible with --output-file."
+   }
+  ],
+  "columns": [
+   "id",
+   "author",
+   "text",
+   "likes",
+   "retweets",
+   "bookmarks",
+   "created_at",
+   "url",
+   "has_media",
+   "media_urls",
+   "media_posters"
+  ],
+  "command": "twitter/bookmarks"
+ },
+ {
+  "site": "v2ex",
+  "name": "topic",
+  "description": "V2EX 主题详情和回复",
+  "access": "read",
+  "strategy": "public",
+  "browser": false,
+  "args": [
+   {
+    "name": "id",
+    "type": "str",
+    "required": true,
+    "positional": true,
+    "help": "Topic ID"
+   }
+  ],
+  "columns": [
+   "id",
+   "title",
+   "content",
+   "member",
+   "created",
+   "node",
+   "replies",
+   "url"
+  ],
+  "command": "v2ex/topic"
+ },
+ {
+  "site": "xiaohongshu",
+  "name": "publish",
+  "description": "小红书发布图文笔记 (creator center UI automation)",
+  "access": "write",
+  "strategy": "cookie",
+  "browser": true,
+  "args": [
+   {
+    "name": "content",
+    "type": "str",
+    "required": true,
+    "positional": true,
+    "help": "笔记正文"
+   },
+   {
+    "name": "title",
+    "type": "str",
+    "required": true,
+    "help": "笔记标题 (最多20字)"
+   },
+   {
+    "name": "images",
+    "type": "str",
+    "required": false,
+    "help": "图片路径，逗号分隔，最多9张 (jpg/png/gif/webp)"
+   },
+   {
+    "name": "card-text",
+    "type": "str",
+    "required": false,
+    "help": "文字配图卡片文字，多张卡片用 ||| 分隔，卡内换行用 \\n"
+   },
+   {
+    "name": "card-style",
+    "type": "str",
+    "required": false,
+    "help": "文字配图卡片样式，运行时按页面实际选项匹配；找不到会失败。省略时使用基础。可选: 基础(默认兜底，万能) 边框(金句/要点卡) 备忘(提醒/随手记) 清新(日常/清单贴士) 涂写(随笔/碎碎念) 便签(笔记/提醒) 光影(情绪/文艺) 涂鸦(趣味/童话) 简约(干货/观点) 手写(日记/情感) 插图(生活方式/轻松话题) 美漫(活力/趣味/故事感) 弥散(弥散光氛围) 柔和(柔和/温柔金句) 印刷(印刷海报/排版) 科技(科技/产品) 贺卡(节日祝福) 札记(艺术/水彩氛围) 书摘(书摘/引用) 手帐(手帐拼贴) 几何(醒目/有力主张)"
+   },
+   {
+    "name": "topics",
+    "type": "str",
+    "required": false,
+    "help": "话题标签，逗号分隔，不含 # 号"
+   },
+   {
+    "name": "draft",
+    "type": "bool",
+    "default": false,
+    "required": false,
+    "help": "保存为草稿，不直接发布"
+   }
+  ],
+  "columns": [
+   "status",
+   "detail"
+  ],
+  "command": "xiaohongshu/publish"
+ }
+]

@@ -1,0 +1,31 @@
+# Safe development configuration for using this repository as a local test
+# vault. It contains no credentials. Production content should use a separate
+# private vault outside the public source repository.
+
+state:
+  backend: file
+
+sources:
+  apple_notes:
+    # Optionally restrict collection to one Notes account for local testing.
+    account: iCloud
+  flomo:
+    # Point this to an official flomo HTML or ZIP export before syncing flomo.
+    # export_path: /path/to/flomo-export.zip
+  markdown:
+    roots:
+      - /Users/z.jin/Documents/GitHub/Workflow
+  opencli:
+    collections:
+      - name: flomo
+        command: [flomo, memos]
+        args: { limit: 200 }
+        map:
+          id: id
+          url: url
+          content: [content]
+          content_format: html
+          created_at: created_at
+          updated_at: updated_at
+          tags: tags
+          exclude: [slug]

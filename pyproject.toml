@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asterism-cli"
+version = "0.1.0"
+description = "A local-first, Git-native content pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Asterism contributors" }]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Text Processing :: Markup",
+]
+dependencies = ["PyYAML>=6"]
+
+[project.scripts]
+asterism = "asterism.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+asterism = ["sources/scripts/*.applescript"]
