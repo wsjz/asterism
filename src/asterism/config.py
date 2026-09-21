@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+from string import Formatter
 import tomllib
 from typing import Any, Mapping
 
@@ -143,6 +144,92 @@ class ArchiveConfig:
     auto_execute: bool = False
 
 
+DEFAULT_TYPES: tuple[str, ...] = ("tutorial", "review", "makeover", "opinion", "checklist")
+DEFAULT_PLATFORMS: tuple[str, ...] = ("blog", "zhihu", "xiaohongshu", "douyin", "sspai", "flowus")
+PROJECT_LAYOUTS = frozenset({"flat", "staged"})
+PROJECT_STATUSES: tuple[str, ...] = (
+    "candidate",
+    "approved",
+    "gathering",
+    "drafted",
+    "reviewed",
+    "adapted",
+    "staged",
+    "published",
+    "retrospected",
+    "archived",
+)
+PATH_PLACEHOLDERS = frozenset({"year", "date", "title", "id", "pillar", "type"})
+BINDING_NAMES = frozenset({"unassigned_media", "platform_exports", "covers"})
+
+_KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
+
+
+@dataclass(frozen=True, slots=True)
+class Pillar:
+    """A content pillar: a lasting subject the creator publishes about."""
+
+    key: str
+    name: str
+    tags: tuple[str, ...] = ()  # aliases matched against an item's tags and folders
+    brief: str | None = None  # template path relative to the vault
+
+
+@dataclass(frozen=True, slots=True)
+class ContentConfig:
+    pillars: tuple[Pillar, ...] = ()
+    types: tuple[str, ...] = DEFAULT_TYPES
+    platforms: tuple[str, ...] = DEFAULT_PLATFORMS
+
+    def pillar(self, key: str | None) -> Pillar | None:
+        return next((entry for entry in self.pillars if entry.key == key), None)
+
+
+@dataclass(frozen=True, slots=True)
+class Stage:
+    """One step of production, and therefore one directory in a project."""
+
+    key: str
+    artifacts: tuple[str, ...] = ()
+    media: tuple[str, ...] = ()
+    media_per_platform: bool = False
+    dir: str | None = None  # explicit directory name, overriding the numbered key
+
+
+DEFAULT_STAGES: tuple[Stage, ...] = (
+    Stage("brief", artifacts=("project.md", "brief.md")),
+    Stage("research", artifacts=("assets.md",)),
+    Stage("originals", media=("photo", "video", "screen-recording")),
+    Stage("project", media=("editing",)),
+    Stage("export", media_per_platform=True),
+    Stage("cover", media=("cover",)),
+    Stage("archive", artifacts=("draft.md", "exports/", "review.md")),
+)
+DEFAULT_BINDINGS: dict[str, str] = {
+    "unassigned_media": "originals",
+    "platform_exports": "export",
+    "covers": "cover",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectConfig:
+    id_format: str = "{year}-{seq:03d}"
+    path: str = "{year}/{date}-{title}"
+    layout: str = "flat"
+    numbered: bool = True
+    stages: tuple[Stage, ...] = DEFAULT_STAGES
+    bindings: tuple[tuple[str, str], ...] = tuple(sorted(DEFAULT_BINDINGS.items()))
+
+    def stage(self, key: str) -> Stage | None:
+        return next((entry for entry in self.stages if entry.key == key), None)
+
+    def bound_stage(self, binding: str) -> Stage | None:
+        key = dict(self.bindings).get(binding)
+        return self.stage(key) if key else None
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     vault: Path
@@ -162,6 +249,8 @@ class Config:
     archive: ArchiveConfig = ArchiveConfig()
     state_dir_override: Path | None = None
     opencli: OpencliConfig = OpencliConfig()
+    content: ContentConfig = ContentConfig()
+    project: ProjectConfig = ProjectConfig()
 
     @property
     def digest_root(self) -> Path:
@@ -170,6 +259,14 @@ class Config:
     @property
     def archive_root(self) -> Path:
         return self.archive.root if self.archive.root is not None else self.vault / "archive"
+
+    @property
+    def content_root(self) -> Path:
+        return self.vault / "content"
+
+    @property
+    def templates_root(self) -> Path:
+        return self.vault / "templates"
 
     @property
     def notes_root(self) -> Path:
@@ -408,6 +505,9 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
     if links not in LINK_STYLES:
         raise ConfigError("links must be 'wikilink' or 'markdown'")
 
+    content = _content_config(_table(raw, "content"))
+    project = _project_config(_table(raw, "project"), content)
+
     return Config(
         root,
         backend,
@@ -426,7 +526,151 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         archive,
         state_dir,
         opencli,
+        content,
+        project,
     )
+
+
+def _content_config(table: Mapping[str, Any]) -> ContentConfig:
+    defaults = ContentConfig()
+    raw_pillars = table.get("pillars", [])
+    if not isinstance(raw_pillars, list) or len(raw_pillars) > 50:
+        raise ConfigError("content.pillars must be a list of at most 50 entries")
+    pillars: list[Pillar] = []
+    for index, entry in enumerate(raw_pillars):
+        label = f"content.pillars[{index}]"
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{label} must be a mapping")
+        key = entry.get("key")
+        if not isinstance(key, str) or _KEY.match(key) is None or len(key) > 40:
+            raise ConfigError(f"{label}.key must be a short lowercase slug such as vibe-coding")
+        if any(existing.key == key for existing in pillars):
+            raise ConfigError(f"{label}.key duplicates another pillar: {key}")
+        name = _optional_short_string(entry, "name", f"{label}.name") or key
+        aliases = _string_list(entry, "tags", f"{label}.tags")
+        brief = _optional_short_string(entry, "brief", f"{label}.brief")
+        if brief is not None:
+            _require_relative(brief, f"{label}.brief")
+        pillars.append(Pillar(key=key, name=name, tags=(key, *aliases), brief=brief))
+
+    types = _slug_list(table, "types", "content.types") or defaults.types
+    platforms = _slug_list(table, "platforms", "content.platforms") or defaults.platforms
+    return ContentConfig(pillars=tuple(pillars), types=types, platforms=platforms)
+
+
+def _project_config(table: Mapping[str, Any], content: ContentConfig) -> ProjectConfig:
+    defaults = ProjectConfig()
+    id_format = _optional_short_string(table, "id_format", "project.id_format") or defaults.id_format
+    _check_id_format(id_format)
+    path = _optional_short_string(table, "path", "project.path") or defaults.path
+    _check_path_template(path)
+    layout = table.get("layout", defaults.layout)
+    if layout not in PROJECT_LAYOUTS:
+        raise ConfigError("project.layout must be 'flat' or 'staged'")
+    numbered = _bool(table, "numbered", defaults.numbered, "project.numbered")
+
+    stages = defaults.stages
+    if "stages" in table:
+        stages = _stages(table["stages"])
+    bindings = dict(defaults.bindings) if "stages" not in table else {}
+    if "bindings" in table:
+        raw_bindings = table["bindings"]
+        if not isinstance(raw_bindings, dict):
+            raise ConfigError("project.bindings must be a mapping")
+        bindings = {}
+        for name, key in raw_bindings.items():
+            if name not in BINDING_NAMES:
+                raise ConfigError(
+                    f"project.bindings.{name} is not a binding; use one of {', '.join(sorted(BINDING_NAMES))}"
+                )
+            if not isinstance(key, str) or not any(stage.key == key for stage in stages):
+                raise ConfigError(f"project.bindings.{name} must name one of the configured stages")
+            bindings[name] = key
+    for name, key in bindings.items():
+        if not any(stage.key == key for stage in stages):
+            raise ConfigError(f"project.bindings.{name} names an unknown stage: {key}")
+    exports = bindings.get("platform_exports")
+    if exports is not None:
+        stage = next(entry for entry in stages if entry.key == exports)
+        if not stage.media_per_platform:
+            raise ConfigError(
+                "project.bindings.platform_exports must name a stage with media_per_platform: true"
+            )
+    return ProjectConfig(
+        id_format=id_format,
+        path=path,
+        layout=layout,
+        numbered=numbered,
+        stages=stages,
+        bindings=tuple(sorted(bindings.items())),
+    )
+
+
+def _stages(value: Any) -> tuple[Stage, ...]:
+    if not isinstance(value, list) or not value or len(value) > 30:
+        raise ConfigError("project.stages must be a non-empty list of at most 30 stages")
+    stages: list[Stage] = []
+    for index, entry in enumerate(value):
+        label = f"project.stages[{index}]"
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{label} must be a mapping")
+        key = entry.get("key")
+        if not isinstance(key, str) or _KEY.match(key) is None or len(key) > 40:
+            raise ConfigError(f"{label}.key must be a short lowercase slug such as originals")
+        if any(existing.key == key for existing in stages):
+            raise ConfigError(f"{label}.key duplicates another stage: {key}")
+        artifacts = _string_list(entry, "artifacts", f"{label}.artifacts")
+        for artifact in artifacts:
+            _require_relative(artifact, f"{label}.artifacts")
+        media = _slug_list(entry, "media", f"{label}.media")
+        per_platform = _bool(entry, "media_per_platform", False, f"{label}.media_per_platform")
+        directory = _optional_short_string(entry, "dir", f"{label}.dir")
+        if directory is not None and _SAFE_SEGMENT.match(directory) is None:
+            raise ConfigError(f"{label}.dir must be a plain directory name")
+        stages.append(
+            Stage(key=key, artifacts=artifacts, media=media, media_per_platform=per_platform, dir=directory)
+        )
+    return tuple(stages)
+
+
+def _slug_list(table: Mapping[str, Any], key: str, label: str) -> tuple[str, ...]:
+    values = _string_list(table, key, label)
+    for value in values:
+        if _KEY.match(value) is None:
+            raise ConfigError(f"{label} entries must be short lowercase slugs: {value!r}")
+    return values
+
+
+def _require_relative(value: str, label: str) -> None:
+    candidate = PurePosixPath(value)
+    if candidate.is_absolute() or ".." in candidate.parts or value.startswith("/"):
+        raise ConfigError(f"{label} must be a relative path inside the project: {value!r}")
+
+
+def _check_id_format(value: str) -> None:
+    try:
+        rendered = value.format(year=2026, seq=1, pillar="x", type="y")
+    except (KeyError, IndexError, ValueError) as error:
+        raise ConfigError(
+            "project.id_format may use {year}, {seq}, {pillar} and {type}, for example '{year}-{seq:03d}'"
+        ) from error
+    if "{seq" not in value or not rendered.strip():
+        raise ConfigError("project.id_format must include {seq} so ids stay unique")
+    if _SAFE_SEGMENT.match(rendered) is None:
+        raise ConfigError(f"project.id_format produces an unsafe id: {rendered!r}")
+
+
+def _check_path_template(value: str) -> None:
+    _require_relative(value, "project.path")
+    names = {name for _, name, _, _ in Formatter().parse(value) if name}
+    unknown = names - PATH_PLACEHOLDERS
+    if unknown:
+        raise ConfigError(
+            f"project.path uses unknown placeholders: {', '.join(sorted(unknown))}; "
+            f"available are {', '.join(sorted(PATH_PLACEHOLDERS))}"
+        )
+    if not names & {"title", "id"}:
+        raise ConfigError("project.path must include {title} or {id} so projects have distinct folders")
 
 
 def _opencli_config(table: Mapping[str, Any]) -> OpencliConfig:

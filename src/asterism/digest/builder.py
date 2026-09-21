@@ -9,6 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ..config import DIGEST_LEVELS, Config
+from ..links import link_to
 from ..models import DigestState, ItemState
 from ..normalize.datetimes import parse_datetime
 from ..rendering import SCHEMA_VERSION, parse_front_matter
@@ -108,13 +109,7 @@ class DigestBuilder:
         target = validated_target(self.vault, period.relative_path)
         existing_status = self._existing_review_status(target)
         state_name = "closed" if closed else "open"
-        entries = [entry for entry in self._items() if period.start <= entry.day <= period.end]
-        updated = [
-            entry for entry in self._items()
-            if entry.updated_day is not None
-            and period.start <= entry.updated_day <= period.end
-            and not (period.start <= entry.day <= period.end)
-        ]
+        entries = self._entries_in(period)
         counts = Counter(entry.item.source for entry in entries)
 
         front = [
@@ -132,12 +127,10 @@ class DigestBuilder:
         lines.append(f"# {period.title}")
         lines.append("")
 
-        if period.level == "day":
-            lines.extend(self._day_body(entries, updated, target))
-        else:
-            lines.extend(self._rollup_body(period, entries, target))
+        lines.extend(self._content(period, 2, target))
 
         rendered = "\n".join(lines).rstrip() + "\n"
+        rendered = _with_preserved_tail(rendered, target)
         changed = not (target.is_file() and _same_except_timestamp(target.read_text(encoding="utf-8"), rendered))
         if changed:
             atomic_write(target, rendered)
@@ -167,27 +160,78 @@ class DigestBuilder:
         value = fields.get("review_status")
         return value if isinstance(value, str) and value in self.config.digest.review_status_values else None
 
-    def _day_body(self, entries: list[_Placed], updated: list[_Placed], target: Path) -> list[str]:
+    # --- content ----------------------------------------------------------------
+
+    def _content(self, period: Period, depth: int, target: Path) -> list[str]:
+        """The period's whole content, rendered from state.
+
+        Every level holds its own text rather than pointing at the level below,
+        so a week still shows the whole week after its days have been archived
+        away, and a month still shows the whole month.
+        """
+        if period.level == "day":
+            return self._items_body(period, depth, target)
+
+        lines = self._summary_table(self._entries_in(period))
+        level_config = self.config.digest.level(period.level)
+        if not level_config.include_lower:
+            return lines
+        lower = self._lower_level(period.level)
+        if lower is None:
+            lines.extend(self._items_body(period, depth, target))
+            return lines
+        for child in self._children(period, lower):
+            if not self._entries_in(child) and not self._updated_in(child):
+                continue  # periods with nothing in them are simply absent
+            lines.append(f"{_heading(depth)} {child.label}")
+            lines.append("")
+            lines.extend(self._content(child, depth + 1, target))
+        return lines
+
+    def _summary_table(self, entries: list[_Placed]) -> list[str]:
+        counts = Counter(entry.item.source for entry in entries)
+        if not counts:
+            return []
+        lines = ["| source | items |", "|---|---|"]
+        lines.extend(f"| {source} | {count} |" for source, count in sorted(counts.items()))
+        lines.append("")
+        return lines
+
+    def _items_body(self, period: Period, depth: int, target: Path) -> list[str]:
+        entries = self._entries_in(period)
+        updated = self._updated_in(period)
         lines: list[str] = []
         if entries:
-            lines.append("## New")
+            lines.append(f"{_heading(depth)} New")
             lines.append("")
             by_source: dict[str, list[_Placed]] = defaultdict(list)
             for entry in entries:
                 by_source[entry.item.source].append(entry)
             for source in sorted(by_source):
-                lines.append(f"### {source}")
+                lines.append(f"{_heading(depth + 1)} {source}")
                 lines.append("")
                 for entry in sorted(by_source[source], key=lambda placed: (placed.moment, placed.item.source_id)):
                     lines.extend(self._entry_lines(entry, target))
                 lines.append("")
         if updated:
-            lines.append("## Updated")
+            lines.append(f"{_heading(depth)} Updated")
             lines.append("")
             for entry in sorted(updated, key=lambda placed: (placed.item.source, placed.item.source_id)):
                 lines.append(f"- {self._link(entry.item, target)}")
             lines.append("")
         return lines
+
+    def _entries_in(self, period: Period) -> list[_Placed]:
+        return [entry for entry in self._items() if period.start <= entry.day <= period.end]
+
+    def _updated_in(self, period: Period) -> list[_Placed]:
+        return [
+            entry
+            for entry in self._items()
+            if entry.updated_day is not None
+            and period.start <= entry.updated_day <= period.end
+            and not (period.start <= entry.day <= period.end)
+        ]
 
     def _entry_lines(self, entry: _Placed, target: Path) -> list[str]:
         stamp = entry.moment.strftime("%H:%M")
@@ -207,60 +251,7 @@ class DigestBuilder:
         limit = self.config.digest.excerpt_chars
         if len(body) <= limit:
             return body
-        return body[:limit].rstrip() + " …"
-
-    def _rollup_body(self, period: Period, entries: list[_Placed], target: Path) -> list[str]:
-        lines: list[str] = []
-        counts = Counter(entry.item.source for entry in entries)
-        if counts:
-            lines.append("| source | items |")
-            lines.append("|---|---|")
-            for source, count in sorted(counts.items()):
-                lines.append(f"| {source} | {count} |")
-            lines.append("")
-
-        level_config = self.config.digest.level(period.level)
-        if not level_config.include_lower:
-            return lines
-        lower = self._lower_level(period.level)
-        if lower is None:
-            return lines
-        merge = self._will_move_lower(period.level)
-        section: list[str] = []
-        for child in self._children(period, lower):
-            child_target = validated_target(self.vault, child.relative_path)
-            if child_target.is_file():
-                section.extend(self._merged(child, child_target) if merge else [self._embed(child, target)])
-            elif merge and self._archived_copy(child).is_file():
-                section.extend(self._merged(child, self._archived_copy(child)))
-            # periods without a document are simply absent
-        if section:
-            lines.append(f"## {lower.capitalize()} digests")
-            lines.append("")
-            lines.extend(section)
-            lines.append("")
-        return lines
-
-    def _will_move_lower(self, level: str) -> bool:
-        return (
-            self.config.archive.enabled
-            and self.config.archive.mode == "move"
-            and self.config.digest.level(level).archive_lower
-        )
-
-    def _archived_copy(self, child: Period) -> Path:
-        return self.config.archive_root / child.relative_path
-
-    def _merged(self, child: Period, path: Path) -> list[str]:
-        try:
-            _, body = parse_front_matter(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, UnicodeDecodeError):
-            return [f"- {child.label}: unreadable digest"]
-        merged = [f"### {child.label}", ""]
-        for line in body.strip().splitlines():
-            merged.append(f"#{line}" if line.startswith("#") else line)
-        merged.append("")
-        return merged
+        return body[:limit].rstrip() + " ..."
 
     def _lower_level(self, level: str) -> str | None:
         """The nearest enabled level below ``level``; months fall back to days when weeks are off."""
@@ -302,32 +293,30 @@ class DigestBuilder:
     # --- links ------------------------------------------------------------------
 
     def _link(self, item: ItemState, target: Path) -> str:
-        title = item.title or item.source_id
-        if self.config.links == "wikilink":
-            return f"[[{item.relative_path.removesuffix('.md')}|{_escape_link_text(title)}]]"
-        relative = _relative_href(self.vault / item.relative_path, target)
-        return f"[{_escape_link_text(title)}]({relative})"
+        label = item.title or item.source_id
+        return link_to(self.config.links, self.vault, item.relative_path, label, from_file=target)
 
-    def _embed(self, child: Period, target: Path) -> str:
-        if self.config.links == "wikilink":
-            return f"![[{child.relative_path.removesuffix('.md')}]]"
-        relative = _relative_href(self.vault / child.relative_path, target)
-        return f"- [{child.label}]({relative})"
+def _heading(depth: int) -> str:
+    """Markdown allows six levels; deeper nesting keeps the last one."""
+    return "#" * min(depth, 6)
+
+
+def _with_preserved_tail(rendered: str, target: Path) -> str:
+    """Keep the person's candidates section when a digest is rebuilt."""
+    from ..gates.candidates import preserved_tail
+
+    if not target.is_file():
+        return rendered
+    try:
+        tail = preserved_tail(target.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        return rendered
+    return rendered if tail is None else rendered.rstrip() + "\n\n" + tail.lstrip("\n")
 
 
 def _same_except_timestamp(existing: str, rendered: str) -> bool:
     strip = lambda text: "\n".join(line for line in text.splitlines() if not line.startswith("generated_at: "))
     return strip(existing) == strip(rendered)
-
-
-def _escape_link_text(text: str) -> str:
-    return " ".join(text.replace("]", "").replace("[", "").replace("|", "-").split())
-
-
-def _relative_href(path: Path, from_file: Path) -> str:
-    import os
-
-    return os.path.relpath(path, start=from_file.parent).replace(os.sep, "/")
 
 
 def _local_zone() -> tzinfo:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
-from ..models import DigestState, ItemState
+from ..models import Assignment, DigestState, ItemState
 from .base import StateBackend
 
 
@@ -12,10 +12,11 @@ _ITEM_COLUMNS = (
     "last_seen_at, first_seen_at, source_created_at, title"
 )
 _DIGEST_COLUMNS = "level, period_start, period_end, relative_path, state, generated_at"
+_ASSIGNMENT_COLUMNS = "source, source_id, decision, decided_at, project_id"
 
 
 class SQLiteStateBackend(StateBackend):
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, path: Path) -> None:
         resolved = path.resolve(strict=False)
@@ -43,12 +44,15 @@ class SQLiteStateBackend(StateBackend):
         cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
         row = cursor.execute("SELECT version FROM schema_version").fetchone()
         version = int(row[0]) if row else 1
-        if version == 1:
-            existing = {info[1] for info in cursor.execute("PRAGMA table_info(item_state)")}
-            for column in ("first_seen_at TEXT", "source_created_at TEXT", "title TEXT"):
-                if column.split()[0] not in existing:
-                    cursor.execute(f"ALTER TABLE item_state ADD COLUMN {column}")
-            cursor.execute("UPDATE item_state SET first_seen_at = last_seen_at WHERE first_seen_at IS NULL")
+        if version in (1, 2):
+            if version == 1:
+                existing = {info[1] for info in cursor.execute("PRAGMA table_info(item_state)")}
+                for column in ("first_seen_at TEXT", "source_created_at TEXT", "title TEXT"):
+                    if column.split()[0] not in existing:
+                        cursor.execute(f"ALTER TABLE item_state ADD COLUMN {column}")
+                cursor.execute(
+                    "UPDATE item_state SET first_seen_at = last_seen_at WHERE first_seen_at IS NULL"
+                )
             cursor.execute("DELETE FROM schema_version")
             cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (self.SCHEMA_VERSION,))
         elif version != self.SCHEMA_VERSION:
@@ -63,6 +67,18 @@ class SQLiteStateBackend(StateBackend):
                 state TEXT NOT NULL,
                 generated_at TEXT NOT NULL,
                 PRIMARY KEY (level, period_start)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS assignment (
+                source TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                decided_at TEXT NOT NULL,
+                project_id TEXT,
+                PRIMARY KEY (source, source_id)
             )
             """
         )
@@ -173,6 +189,43 @@ class SQLiteStateBackend(StateBackend):
                 (level,),
             )
         return [DigestState(**dict(row)) for row in rows]
+
+    # --- assignments ---------------------------------------------------------
+
+    def get_assignment(self, source: str, source_id: str) -> Assignment | None:
+        row = self.connection.execute(
+            f"SELECT {_ASSIGNMENT_COLUMNS} FROM assignment WHERE source = ? AND source_id = ?",
+            (source, source_id),
+        ).fetchone()
+        return Assignment(**dict(row)) if row else None
+
+    def save_assignment(self, assignment: Assignment) -> None:
+        self.connection.execute(
+            f"""
+            INSERT INTO assignment ({_ASSIGNMENT_COLUMNS}) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source, source_id) DO UPDATE SET
+                decision = excluded.decision,
+                decided_at = excluded.decided_at,
+                project_id = excluded.project_id
+            """,
+            (
+                assignment.source,
+                assignment.source_id,
+                assignment.decision,
+                assignment.decided_at,
+                assignment.project_id,
+            ),
+        )
+        self.connection.commit()
+
+    def assignments(self, decision: str | None = None) -> list[Assignment]:
+        query = f"SELECT {_ASSIGNMENT_COLUMNS} FROM assignment"
+        parameters: tuple[str, ...] = ()
+        if decision is not None:
+            query += " WHERE decision = ?"
+            parameters = (decision,)
+        query += " ORDER BY decided_at, source, source_id"
+        return [Assignment(**dict(row)) for row in self.connection.execute(query, parameters)]
 
     def close(self) -> None:
         self.connection.close()

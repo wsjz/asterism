@@ -61,15 +61,20 @@ class DigestBuilderTest(unittest.TestCase):
                 self.assertEqual({"flomo": 2}, fields["sources"])
                 self.assertIn("- **09:20** [[notes/flomo/Morning idea|Morning idea]]", body)
                 self.assertIn("  A short body.", body)
-                self.assertIn(" …", body)  # long body excerpted
+                self.assertIn(" ...", body)  # long body excerpted
 
                 weekly = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
                 wfields, wbody = parse_front_matter(weekly)
                 self.assertEqual(("2026-09-17", "2026-09-23"), (wfields["period_start"], wfields["period_end"]))
                 self.assertEqual(3, wfields["items"])
-                self.assertIn("![[digest/daily/2026/2026-09-21]]", wbody)
+                # the week holds the week's own content, not a pointer to the days
+                self.assertIn("## 2026-09-21", wbody)
+                self.assertIn("### New", wbody)
+                self.assertIn("#### flomo", wbody)
+                self.assertIn("A short body.", wbody)
+                self.assertIn("## 2026-09-22", wbody)
+                self.assertNotIn("![[", wbody)
                 self.assertNotIn("no digest", wbody)
-                self.assertEqual(2, wbody.count("![["))  # only the two days that have items
 
                 self.assertEqual("rolled", state.get_digest("day", "2026-09-21").state)
                 self.assertIsNone(state.get_digest("week", "2026-09-24"))  # open week without items: no document
@@ -110,12 +115,13 @@ class DigestBuilderTest(unittest.TestCase):
                 daily = (vault / "digest" / "daily" / "2026" / "2026-08-05.md").read_text(encoding="utf-8")
                 self.assertIn("[Idea](../../../notes/flomo/Idea.md)", daily)
                 monthly = (vault / "digest" / "monthly" / "2026" / "2026-08.md").read_text(encoding="utf-8")
-                self.assertIn("## Day digests", monthly)
-                self.assertIn("- [2026-08-05](../../daily/2026/2026-08-05.md)", monthly)
-                self.assertNotIn("no digest", monthly)
+                # weeks are off, so the month aggregates the days directly
+                self.assertIn("## 2026-08-05", monthly)
+                self.assertIn("[Idea](../../../notes/flomo/Idea.md)", monthly)
+                self.assertIn("Body", monthly)
                 self.assertNotIn("2026-08-06", monthly)
 
-    def test_archive_move_merges_days_into_week_and_moves_files(self) -> None:
+    def test_archive_move_keeps_the_week_complete_after_moving_the_days(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             archive_root = Path(temporary) / "archive-root"
             archive_root.mkdir()
@@ -134,14 +140,17 @@ class DigestBuilderTest(unittest.TestCase):
                 self.assertFalse(day_file.exists())
                 self.assertTrue((archive_root / "digest" / "daily" / "2026" / "2026-09-21.md").is_file())
                 weekly = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
-                self.assertIn("### 2026-09-21", weekly)
-                self.assertIn("Body text", weekly)
+                self.assertIn("## 2026-09-21", weekly)
+                self.assertIn("Body text", weekly)  # the week keeps the content the archived day held
                 self.assertNotIn("![[", weekly)
                 self.assertEqual("archived", state.get_digest("day", "2026-09-21").state)
                 self.assertTrue(any("moved to" in m for m in messages))
-                # regenerating the week after the move still finds the archived copy
+                # rebuilding the week after the day file is gone loses nothing:
+                # every level is rendered from state, not from the level below
                 DigestBuilder(config, state, now=now).regenerate(parse_label("2026-W39", config.digest))
-                self.assertIn("Body text", (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8"))
+                rebuilt = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
+                self.assertIn("## 2026-09-21", rebuilt)
+                self.assertIn("Body text", rebuilt)
 
     def test_archive_disabled_leaves_files_in_place(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -46,8 +46,23 @@ Phase 1, collection, provides:
   per-source error isolation, and an opt-in Git commit after a successful sync;
 - `missing` to review items a source stopped returning; nothing is deleted.
 
-Content projects, drafts, publishing, and optional LLM enhancement come in
-later phases.
+Phase 2, content projects, adds:
+
+- a content project per piece: a folder with a `project.md` card in YAML front
+  matter that Obsidian's Properties panel edits, and a `brief.md` from a
+  per-pillar template;
+- `new`, `status`, and `week`, plus a regenerated `content/INDEX.md` and a
+  seeded Obsidian Bases view;
+- the first decision gate: `propose` lists the week's undecided items as
+  checkboxes in that week's digest, and `apply` turns the ticked ones into
+  projects, recording the decision so they are not asked about again.
+
+Drafts, publishing, and optional LLM enhancement come in later phases.
+
+Every project field lives in its card in the vault, so the pipeline runs
+complete without any external service. A Notion board, a NAS, and a language
+model are projections and accelerators that can be added or removed at any
+time; losing one loses convenience, never content or state.
 
 ## Requirements
 
@@ -251,6 +266,42 @@ asterism missing --vault ~/Documents/AsterismVault
 digests are copied or moved below `archive.root`, which may be a NAS mount.
 `doctor` reports the vault's storage, warns when the vault sits on a network
 filesystem, and shows which archive switches are masked.
+
+## Content projects
+
+A project is a folder under `content/` holding the card and the brief for one
+piece. The weekly session is one file: open the week's digest, tick what is
+worth making, and apply.
+
+```bash
+asterism propose --vault ~/Documents/AsterismVault            # list this week's undecided items
+# tick the lines you want in the digest, then
+asterism apply --vault ~/Documents/AsterismVault              # each tick becomes a project
+asterism status --vault ~/Documents/AsterismVault --pillar desk-setup
+asterism week --vault ~/Documents/AsterismVault               # what is in flight and what waits
+asterism new "Desk lighting" --vault ~/Documents/AsterismVault --pillar desk-setup --type tutorial
+```
+
+Pillars decide how fragments are classified and which brief template a new
+project starts from; a fragment matching no pillar is listed as unclassified
+rather than guessed:
+
+```yaml
+content:
+  pillars:
+    - { key: vibe-coding, name: Vibe Coding, tags: [coding] }
+    - { key: desk-setup, name: Desk Setup, tags: [desk] }
+  types: [tutorial, review, makeover, opinion, checklist]
+  platforms: [blog, zhihu, xiaohongshu, douyin, sspai, flowus]
+project:
+  path: "{year}/{date}-{title}"   # or "{pillar}/{date}-{title}"
+```
+
+Templates are seeded into the vault the first time they are used
+(`templates/project.md`, `templates/brief-<pillar>.md`), so editing them
+changes every later project. Status is yours: the machine sets it when it
+creates a project and reads it afterwards, so moving a piece forward is an
+edit in Obsidian.
 
 `--vault` determines the output root. With the command above, Apple Notes are
 written to:

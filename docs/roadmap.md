@@ -32,25 +32,21 @@ Design principles that hold across every phase:
   artifact and can be switched off at any time.
 - Nothing is deleted or published automatically. Collection never deletes,
   publishing never happens without the third gate.
-- Ownership is split by field, never shared. The vault is the source of
-  truth for content and machine facts (drafts, briefs, assets, published
-  links, metrics, sources). Notion is the management board and the source of
-  truth for management fields (status, schedule, priority, platforms,
-  promise, notes). Each field flows in one direction; the content id joins
-  the two. NAS and other tools are manifests or copies rebuilt from these.
-- Each phase adds a layer to the right of the existing ones and never rewrites
-  collection. State schema changes ship with a migration.
+- The vault is the single source of truth and is complete on its own. Every
+  other tool is a projection that can be rebuilt from it: Notion is a nicer
+  surface for planning, NAS holds copies, an LLM enhances a deterministic
+  artifact. Losing any of them loses convenience, never content or state.
 - Generated Markdown links with Obsidian wikilinks by default
   (`links: wikilink | markdown` in configuration), so digests, briefs, drafts,
   and asset lists connect raw notes and projects into one graph: backlinks
   show where a fragment was used, and search and the graph surface related
-  material while writing. Discovery happens in Obsidian; management happens
-  in Notion.
+  material while writing. Discovery happens in Obsidian, and planning is
+  comfortable in Notion for those who add it.
 
-## Phase 1 — Collection (current)
+## Phase 1 — Collection
 
-**Status.** Implemented through step 11 of [the Phase 1 plan](phase-1.md);
-the remaining criterion is one week of daily real use without manual fixes.
+**Status.** Implemented; see [the Phase 1 plan](phase-1.md). The remaining
+criterion is one week of daily real use without manual fixes.
 
 **Goal.** Every note-like input the pipeline will ever need is reliably and
 incrementally mirrored into the vault with provenance, and the collection
@@ -159,7 +155,13 @@ transcripts, screenshots) are also collection, but they only matter once
 content projects exist to attach them to. They arrive in Phase 3 through the
 same adapter contract.
 
-## Phase 2 — Content projects and the first gate
+## Phase 2 — Content projects and the first gate (current)
+
+**Status.** Steps 1 to 5 of [the Phase 2 plan](phase-2.md) are implemented:
+project cards, scaffolding, `new`, `status`, `week`, the index and Bases
+views, assignments in state, rule-based classification, and gate 1 through
+`propose` and `apply`. The Notion management board (step 6) is left until the
+rest has been used for real.
 
 **Goal.** The pipeline has its core object, the content project, and a weekly
 review that turns collected fragments into approved projects with one human
@@ -172,20 +174,17 @@ machine (`candidate → approved → gathering → drafted → reviewed → adap
 staged → published → retrospected → archived`); `new`, `status`, `week`; a machine-maintained `content/INDEX.md` table (date,
 title, pillar, type, status, platforms) regenerated on every status change
 as a browsing view, plus a generated `content/projects.base` for Obsidian
-Bases; the Notion management board: a database whose rows join projects by
-content id, owning status (the five human states), scheduled date, priority,
-primary and derived platforms, promise, and notes, while the vault owns
-content and machine facts; every run pulls Notion-owned fields into a
-read-only copy in `project.md`, advances the state machine from the Notion
-status, then pushes vault-owned facts to the row: `obsidian://open?vault=…&file=…`
-links to `draft.md` and `project.md` (vault-relative, URL-encoded, so the same
-link opens on Mac and iPad), https publication links as the fallback for
-devices without Obsidian, metrics, and asset counts, while `project.md` keeps
-the row's https URL so both sides link to each other; gates 1 and 3 complete either by a Notion status
-change or by the digest checkbox, gate 2 stays in the editor; a project can be
-created from a Notion row (Asterism scaffolds it) or from the weekly digest
-(Asterism creates the row); when Notion is unreachable, collection and
-digests continue and management-dependent steps pause on the last copy;
+Bases; an optional Notion board: a projection of the cards into a database
+whose rows join projects by content id, used as a nicer surface for planning
+and as a second place to edit the management fields. The vault owns every
+field at all times, so the board is never a store: a run pushes the card's
+values and `obsidian://open?vault=...&file=...` links to the row, reads back
+whatever the person changed there, and reports rather than acts when the row,
+the database or the token is gone. Deleting the board loses an input device
+and nothing else; a vault with no board configured behaves exactly the same
+minus that surface. Gates 1 and 3 may be completed either in Notion or in the
+vault's own files, gate 2 stays in the editor; a row created by hand
+scaffolds a project, and a project created from a digest creates a row;
 `content.pillars` in `asterism.yaml` (key, name,
 tag aliases for classification, brief template) and `content.types`; pillar is
 front matter metadata and only shapes directories when `project.path`

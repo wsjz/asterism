@@ -133,6 +133,28 @@ class ItemState:
         return self.source_created_at or self.first_seen_at
 
 
+# A decision is recorded only once it is made; an item nobody has judged yet
+# simply has no assignment.
+ASSIGNMENT_DECISIONS: tuple[str, ...] = ("ignored", "promoted")
+
+
+@dataclass(frozen=True, slots=True)
+class Assignment:
+    """What the person decided about one collected item."""
+
+    source: str
+    source_id: str
+    decision: str
+    decided_at: str
+    project_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.decision not in ASSIGNMENT_DECISIONS:
+            raise ValueError(f"decision must be one of {', '.join(ASSIGNMENT_DECISIONS)}")
+        if self.decision == "promoted" and not self.project_id:
+            raise ValueError("a promoted item must name the project it became")
+
+
 DIGEST_LEVELS: tuple[str, ...] = ("day", "week", "month", "year")
 DIGEST_STATES: tuple[str, ...] = ("open", "closed", "rolled", "archived")
 

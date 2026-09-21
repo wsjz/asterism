@@ -42,8 +42,10 @@ asterism.local.toml
 !/notes/notion/README.md
 /notes/opencli-*/
 
-# Digests, archives, and inboxes when this repository is used as a vault
+# Vault output when this repository is used as a vault
 /digest/
+/content/
+/templates/
 /archive/
 /inbox/
 

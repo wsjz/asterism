@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from asterism.models import DigestState, ItemState
+from asterism.models import Assignment, DigestState, ItemState
 from asterism.state import FileStateBackend, SQLiteStateBackend
 
 
@@ -65,6 +65,27 @@ class StateBackendContract:
             self.assertEqual(1, len(backend.digests("week")))
             backend.close()
 
+    def test_assignments_are_recorded_and_listed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            backend = self.backend_type(Path(temporary) / self.filename)
+            self.assertIsNone(backend.get_assignment("flomo", "m1"))
+            backend.save_assignment(Assignment("flomo", "m1", "promoted", "2026-09-22T10:00:00+08:00", "2026-001"))
+            backend.save_assignment(Assignment("flomo", "m2", "ignored", "2026-09-22T10:01:00+08:00"))
+            stored = backend.get_assignment("flomo", "m1")
+            self.assertEqual(("promoted", "2026-001"), (stored.decision, stored.project_id))
+            self.assertEqual(["m1", "m2"], [a.source_id for a in backend.assignments()])
+            self.assertEqual(["m2"], [a.source_id for a in backend.assignments("ignored")])
+            backend.save_assignment(Assignment("flomo", "m2", "promoted", "2026-09-23T00:00:00+08:00", "2026-002"))
+            self.assertEqual("promoted", backend.get_assignment("flomo", "m2").decision)
+            self.assertEqual([], backend.assignments("ignored"))
+            backend.close()
+
+    def test_rejects_an_unusable_decision(self) -> None:
+        with self.assertRaises(ValueError):
+            Assignment("flomo", "m", "maybe", "2026-09-22T10:00:00+08:00")
+        with self.assertRaises(ValueError):
+            Assignment("flomo", "m", "promoted", "2026-09-22T10:00:00+08:00")
+
 
 class FileStateTest(StateBackendContract, unittest.TestCase):
     backend_type = FileStateBackend
@@ -85,7 +106,7 @@ class FileStateTest(StateBackendContract, unittest.TestCase):
             item = backend.get("flomo", "m1")
             self.assertEqual("2026-09-01T00:00:00+00:00", item.first_seen_at)
             self.assertIsNone(item.title)
-            self.assertEqual(2, json.loads(path.read_text())["schema_version"])
+            self.assertEqual(3, json.loads(path.read_text())["schema_version"])
             backend.close()
 
 
@@ -111,9 +132,26 @@ class SQLiteStateTest(StateBackendContract, unittest.TestCase):
             item = backend.get("flomo", "m1")
             self.assertEqual("2026-09-01T00:00:00+00:00", item.first_seen_at)
             self.assertIsNone(item.source_created_at)
+            self.assertEqual([], backend.assignments())
             backend.close()
             # reopening must not migrate twice or fail
             SQLiteStateBackend(path).close()
+
+    def test_migrates_schema_2(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / self.filename
+            first = SQLiteStateBackend(path)
+            first.save(_item("n", "2026-09-01T00:00:00+00:00"))
+            first.connection.execute("DELETE FROM schema_version")
+            first.connection.execute("INSERT INTO schema_version (version) VALUES (2)")
+            first.connection.execute("DROP TABLE assignment")
+            first.connection.commit()
+            first.close()
+
+            backend = SQLiteStateBackend(path)
+            self.assertEqual([], backend.assignments())
+            self.assertEqual("n", backend.get("apple_notes", "n").source_id)
+            backend.close()
 
 
 if __name__ == "__main__":

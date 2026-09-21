@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Iterable
 
-from ..models import DigestState, ItemState
+from ..models import Assignment, DigestState, ItemState
 
 
 class StateBackend(ABC):
@@ -43,6 +43,18 @@ class StateBackend(ABC):
 
     @abstractmethod
     def digests(self, level: str | None = None) -> list[DigestState]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_assignment(self, source: str, source_id: str) -> Assignment | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_assignment(self, assignment: Assignment) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def assignments(self, decision: str | None = None) -> list[Assignment]:
         raise NotImplementedError
 
     def close(self) -> None:
