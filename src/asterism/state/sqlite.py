@@ -11,12 +11,12 @@ _ITEM_COLUMNS = (
     "source, source_id, relative_path, content_hash, source_updated_at, "
     "last_seen_at, first_seen_at, source_created_at, title"
 )
-_DIGEST_COLUMNS = "level, period_start, period_end, relative_path, state, generated_at"
+_DIGEST_COLUMNS = "source, level, period_start, period_end, relative_path, state, generated_at"
 _ASSIGNMENT_COLUMNS = "source, source_id, decision, decided_at, project_id"
 
 
 class SQLiteStateBackend(StateBackend):
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, path: Path) -> None:
         resolved = path.resolve(strict=False)
@@ -44,7 +44,7 @@ class SQLiteStateBackend(StateBackend):
         cursor.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
         row = cursor.execute("SELECT version FROM schema_version").fetchone()
         version = int(row[0]) if row else 1
-        if version in (1, 2):
+        if version in (1, 2, 3):
             if version == 1:
                 existing = {info[1] for info in cursor.execute("PRAGMA table_info(item_state)")}
                 for column in ("first_seen_at TEXT", "source_created_at TEXT", "title TEXT"):
@@ -53,6 +53,8 @@ class SQLiteStateBackend(StateBackend):
                 cursor.execute(
                     "UPDATE item_state SET first_seen_at = last_seen_at WHERE first_seen_at IS NULL"
                 )
+            if version == 3:
+                cursor.execute("DROP TABLE IF EXISTS digest_state")  # now keyed by source; regenerated
             cursor.execute("DELETE FROM schema_version")
             cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (self.SCHEMA_VERSION,))
         elif version != self.SCHEMA_VERSION:
@@ -60,13 +62,14 @@ class SQLiteStateBackend(StateBackend):
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS digest_state (
+                source TEXT NOT NULL,
                 level TEXT NOT NULL,
                 period_start TEXT NOT NULL,
                 period_end TEXT NOT NULL,
                 relative_path TEXT NOT NULL,
                 state TEXT NOT NULL,
                 generated_at TEXT NOT NULL,
-                PRIMARY KEY (level, period_start)
+                PRIMARY KEY (source, level, period_start)
             )
             """
         )
@@ -150,24 +153,26 @@ class SQLiteStateBackend(StateBackend):
 
     # --- digests -------------------------------------------------------------
 
-    def get_digest(self, level: str, period_start: str) -> DigestState | None:
+    def get_digest(self, source: str, level: str, period_start: str) -> DigestState | None:
         row = self.connection.execute(
-            f"SELECT {_DIGEST_COLUMNS} FROM digest_state WHERE level = ? AND period_start = ?",
-            (level, period_start),
+            f"SELECT {_DIGEST_COLUMNS} FROM digest_state "
+            "WHERE source = ? AND level = ? AND period_start = ?",
+            (source, level, period_start),
         ).fetchone()
         return DigestState(**dict(row)) if row else None
 
     def save_digest(self, digest: DigestState) -> None:
         self.connection.execute(
             f"""
-            INSERT INTO digest_state ({_DIGEST_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(level, period_start) DO UPDATE SET
+            INSERT INTO digest_state ({_DIGEST_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source, level, period_start) DO UPDATE SET
                 period_end = excluded.period_end,
                 relative_path = excluded.relative_path,
                 state = excluded.state,
                 generated_at = excluded.generated_at
             """,
             (
+                digest.source,
                 digest.level,
                 digest.period_start,
                 digest.period_end,
@@ -178,16 +183,13 @@ class SQLiteStateBackend(StateBackend):
         )
         self.connection.commit()
 
-    def digests(self, level: str | None = None) -> list[DigestState]:
-        if level is None:
-            rows = self.connection.execute(
-                f"SELECT {_DIGEST_COLUMNS} FROM digest_state ORDER BY level, period_start"
-            )
-        else:
-            rows = self.connection.execute(
-                f"SELECT {_DIGEST_COLUMNS} FROM digest_state WHERE level = ? ORDER BY period_start",
-                (level,),
-            )
+    def digests(self, source: str | None = None, level: str | None = None) -> list[DigestState]:
+        clauses = [(name, value) for name, value in (("source", source), ("level", level)) if value is not None]
+        query = f"SELECT {_DIGEST_COLUMNS} FROM digest_state"
+        if clauses:
+            query += " WHERE " + " AND ".join(f"{name} = ?" for name, _ in clauses)
+        query += " ORDER BY source, level, period_start"
+        rows = self.connection.execute(query, tuple(value for _, value in clauses))
         return [DigestState(**dict(row)) for row in rows]
 
     # --- assignments ---------------------------------------------------------

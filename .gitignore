@@ -15,6 +15,7 @@ dist/
 # macOS and editors
 .DS_Store
 .idea/
+.obsidian/
 .vscode/
 
 # Local Asterism vault data
@@ -43,8 +44,9 @@ asterism.local.toml
 /notes/opencli-*/
 
 # Vault output when this repository is used as a vault
-/digest/
 /content/
+/trash/
+/review/
 /templates/
 /archive/
 /inbox/

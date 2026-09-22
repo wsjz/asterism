@@ -188,7 +188,7 @@ Design:
 
 - Configuration block `digest` exactly as in the roadmap: `timezone`,
   `after_sync`, `excerpt_chars`, and per level `enabled`, `run_on`,
-  `include_*`, `archive_*`, plus `review_status` and (ignored in mode A)
+  `include_*`, `archive_*`, and (ignored in mode A)
   `llm`.
 - `digest/periods.py`: pure functions that, given a date and the
   configuration, return the period containing it and the list of periods
@@ -205,8 +205,7 @@ Design:
 - `asterism digest --vault [--regenerate PERIOD]`; `sync` calls the same
   code after a successful run when `after_sync` is true, unless
   `--no-digest`.
-- Lifecycle `open → closed → rolled → archived`; `review_status` written
-  once with the configured default and never changed by the machine.
+- Lifecycle `open → closed → rolled → archived`.
 
 Files: new `src/asterism/digest/*`, `config.py`, `cli.py`,
 `tests/test_digest_periods.py` (fixed clock, cross-week, cross-month, list

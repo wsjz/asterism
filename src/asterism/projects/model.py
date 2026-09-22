@@ -39,15 +39,11 @@ BRIEF_FILE = "brief.md"
 # `status` and `week`.
 NEXT_ACTION: dict[str, str] = {
     "candidate": "decide whether to make it",
-    "approved": "start gathering material",
-    "gathering": "say when the material is complete",
-    "drafted": "review the draft",
-    "reviewed": "generate the platform versions",
-    "adapted": "check the exports",
-    "staged": "confirm publication",
+    "making": "gather the material and write the draft",
+    "ready": "confirm and publish it",
     "published": "wait for the retrospective",
-    "retrospected": "archive it",
-    "archived": "nothing, it is done",
+    "retrospected": "nothing, it is done",
+    "dropped": "restore it if you change your mind",
 }
 
 
@@ -192,8 +188,12 @@ class ContentProject:
         return replace(self, body=body)
 
     @property
+    def is_dropped(self) -> bool:
+        return self.status == "dropped"
+
+    @property
     def is_published(self) -> bool:
-        return self.status in ("published", "retrospected", "archived")
+        return self.status in ("published", "retrospected")
 
     def published_on(self, platform: str) -> bool:
         record = self.published.get(platform)

@@ -1,10 +1,28 @@
 """Decision gates: the few places where the pipeline waits for a person."""
-from .candidates import CANDIDATES_HEADING, Candidate, apply_candidates, preserved_tail, propose_candidates
+from .review import (
+    SECTIONS,
+    Line,
+    Sheet,
+    apply_sheet,
+    build_sheet,
+    coverage,
+    days_since_last,
+    latest_sheet,
+    path_index,
+    read_sheet,
+    sheets,
+)
 
 __all__ = [
-    "CANDIDATES_HEADING",
-    "Candidate",
-    "apply_candidates",
-    "preserved_tail",
-    "propose_candidates",
+    "Line",
+    "SECTIONS",
+    "Sheet",
+    "apply_sheet",
+    "build_sheet",
+    "coverage",
+    "days_since_last",
+    "latest_sheet",
+    "path_index",
+    "read_sheet",
+    "sheets",
 ]

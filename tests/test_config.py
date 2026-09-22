@@ -85,8 +85,7 @@ class ConfigTest(unittest.TestCase):
                 "  week: { run_on: 3, include_days: false, archive_days: true }\n"
                 "  month:\n"
                 "    run_on: ['01-31','02-28','03-31','04-30','05-31','06-30','07-31','08-31','09-30','10-31','11-30','12-31']\n"
-                "  year: { enabled: true, run_on: 6 }\n"
-                "  review_status: { values: [new, seen], default: seen }\n",
+                "  year: { enabled: true, run_on: 6 }\n",
                 encoding="utf-8",
             )
             loaded = load_config(vault)
@@ -96,8 +95,6 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual((3, False, True), (loaded.digest.week.run_on, loaded.digest.week.include_lower, loaded.digest.week.archive_lower))
             self.assertEqual("12-31", loaded.digest.month.run_on[11])
             self.assertEqual(6, loaded.digest.year.run_on)
-            self.assertEqual(("new", "seen"), loaded.digest.review_status_values)
-            self.assertEqual("seen", loaded.digest.review_status_default)
 
     def test_parses_storage_archive_and_state_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -131,7 +128,6 @@ class ConfigTest(unittest.TestCase):
             ("digest:\n  month: { run_on: [2026-01-31, '02-28', '03-31', '04-30', '05-31', '06-30', '07-31', '08-31', '09-30', '10-31', '11-30', '12-31'] }\n", "quoted"),
             ("digest:\n  month: { run_on: 6 }\n", "week index"),
             ("digest:\n  timezone: Mars/Olympus\n", "timezone"),
-            ("digest:\n  review_status: { values: [a], default: b }\n", "default"),
             ("links: html\n", "links"),
         ]
         for text, needle in cases:

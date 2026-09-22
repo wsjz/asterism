@@ -36,13 +36,6 @@ class Period:
         return f"{self.end.year}"
 
     @property
-    def relative_path(self) -> str:
-        directory = _LEVEL_DIRS[self.level]
-        if self.level == "year":
-            return f"digest/{directory}/{self.label}.md"
-        return f"digest/{directory}/{self.end.year}/{self.label}.md"
-
-    @property
     def title(self) -> str:
         if self.level == "day":
             return self.label
@@ -53,6 +46,20 @@ class Period:
 
     def days(self) -> list[date]:
         return [self.start + timedelta(days=offset) for offset in range((self.end - self.start).days + 1)]
+
+
+def digest_relative_path(source_dir: str, period: Period) -> str:
+    """Where a source's digest for a period lives: ``notes/<source>/digest/<level>/...``.
+
+    Everything a source produces stays in one directory and splits in two:
+    ``origin/`` holds the collected items, ``digest/`` holds the rollups over
+    them. A week of flomo and a week of Apple Notes are therefore read
+    separately, and neither leaves its source's tree.
+    """
+    directory = _LEVEL_DIRS[period.level]
+    if period.level == "year":
+        return f"notes/{source_dir}/digest/{directory}/{period.label}.md"
+    return f"notes/{source_dir}/digest/{directory}/{period.end.year}/{period.label}.md"
 
 
 def _month_end_day(year: int, month: int, run_on: int | tuple[str, ...] | str | None) -> int:

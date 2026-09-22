@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..config import RECENTLY_DELETED_FOLDERS
 from ..models import Origin, SourceItem
 from ..normalize import derive_title
+from ..normalize.markdown import html_to_markdown
 from .base import Source, SourceError
 from .fragments import note_date, split_daily_log
 from .utils import parse_datetime
@@ -96,9 +97,9 @@ class AppleNotesSource(Source):
                 raise AppleNotesError(f"invalid Apple Notes field: {name}")
             return value
 
-        content = text_field("content_text")
         note_id = text_field("source_id", required=True)
         note_title = text_field("title")
+        content = _body_to_markdown(text_field("content_text"), note_title)
         folder = text_field("folder")
         created_at = parse_datetime(record.get("created_at"), "Apple Notes")
         updated_at = parse_datetime(record.get("updated_at"), "Apple Notes")
@@ -154,6 +155,20 @@ class AppleNotesSource(Source):
             )
             for fragment in fragments
         ]
+
+
+def _body_to_markdown(body: str, title: str) -> str:
+    """Convert a note's HTML body, dropping the heading Notes repeats from the title."""
+    if not body.strip():
+        return ""
+    try:
+        text = html_to_markdown(body)
+    except ValueError as error:
+        raise AppleNotesError("Apple Notes returned a malformed note body") from error
+    lines = text.splitlines()
+    if lines and title and lines[0].lstrip("# ").strip() == title.strip() and lines[0].startswith("#"):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
 
 
 def _resolve_zone(name: str | None) -> tzinfo:

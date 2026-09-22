@@ -65,6 +65,33 @@ class MarkdownTest(unittest.TestCase):
             html_to_markdown(html),
         )
 
+    def test_headings_ordered_lists_and_checklists(self) -> None:
+        self.assertEqual("## Section", html_to_markdown("<h2>Section</h2>"))
+        self.assertEqual("1. first\n2. second", html_to_markdown("<ol><li>first</li><li>second</li></ol>"))
+        self.assertEqual(
+            "- [x] done\n- [ ] open",
+            html_to_markdown('<ul class="Checklist"><li class="checked">done</li><li class="unchecked">open</li></ul>'),
+        )
+
+    def test_nesting_survives_even_when_the_editor_writes_lists_as_siblings(self) -> None:
+        # Apple Notes puts a nested <ul> beside the <li> it belongs to, with
+        # newlines between the tags as formatting
+        html = """<div><b>Head</b></div>
+<ul>
+<li>outer</li>
+<ul>
+<li>inner one<br></li>
+<li>inner two<br></li>
+<ul>
+<li>deeper</li>
+</ul>
+</ul>
+</ul>"""
+        self.assertEqual(
+            "**Head**\n\n- outer\n  - inner one\n  - inner two\n    - deeper",
+            html_to_markdown(html),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

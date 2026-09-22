@@ -34,7 +34,7 @@ class StateBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_digest(self, level: str, period_start: str) -> DigestState | None:
+    def get_digest(self, source: str, level: str, period_start: str) -> DigestState | None:
         raise NotImplementedError
 
     @abstractmethod
@@ -42,7 +42,7 @@ class StateBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def digests(self, level: str | None = None) -> list[DigestState]:
+    def digests(self, source: str | None = None, level: str | None = None) -> list[DigestState]:
         raise NotImplementedError
 
     @abstractmethod

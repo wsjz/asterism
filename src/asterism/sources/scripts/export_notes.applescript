@@ -56,7 +56,9 @@ on folderRecords(folderObject, accountName, parentPath)
             try
                 set noteId to id of noteObject as text
                 set noteTitle to name of noteObject as text
-                set noteBody to plaintext of noteObject as text
+                -- the HTML body keeps checklists, nesting, headings and emphasis;
+                -- plaintext would flatten all of it
+                set noteBody to body of noteObject as text
                 set d1 to (get creation date of noteObject)
                 set d2 to (get modification date of noteObject)
                 set recordText to "{\"source_id\":" & my jsonString(noteId) & ¬

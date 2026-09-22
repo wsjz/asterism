@@ -8,7 +8,8 @@ import tempfile
 
 
 NOTES_DIR = "notes"
-DIGEST_DIR = "digest"
+ORIGIN_DIR = "origin"  # notes/<source>/origin/ holds the collected items
+DIGEST_DIR = "digest"  # notes/<source>/digest/<level>/ holds the rollups over them
 CONTENT_DIR = "content"
 STATE_DIR = "state"
 LOGS_DIR = "logs"

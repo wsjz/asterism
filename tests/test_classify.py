@@ -27,7 +27,7 @@ class ClassifyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             config = load_config(_vault(temporary))
             item = SourceItem("flomo", "m1", "Idea", "Body", tags=("area/desk", "draft"), parent="Ideas")
-            relative = "notes/flomo/Idea.md"
+            relative = "notes/flomo/origin/Idea.md"
             atomic_write(config.vault / relative, render_markdown(item))
 
             self.assertEqual((("area/desk", "draft"), "Ideas"), item_facets(config.vault, relative))
@@ -37,8 +37,8 @@ class ClassifyTest(unittest.TestCase):
     def test_a_missing_or_unreadable_note_classifies_as_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             config = load_config(_vault(temporary))
-            self.assertEqual(((), None), item_facets(config.vault, "notes/flomo/gone.md"))
-            state = ItemState("flomo", "m1", "notes/flomo/gone.md", "sha256:x", None, "2026-09-22T00:00:00+08:00")
+            self.assertEqual(((), None), item_facets(config.vault, "notes/flomo/origin/gone.md"))
+            state = ItemState("flomo", "m1", "notes/flomo/origin/gone.md", "sha256:x", None, "2026-09-22T00:00:00+08:00")
             self.assertIsNone(classify_item(config, state))
 
 

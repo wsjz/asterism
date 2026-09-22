@@ -31,17 +31,17 @@ class CreateProjectTest(unittest.TestCase):
             config = load_config(_vault(temporary))
             project = create_project(
                 config, title="Desktop Status Screen", pillar="vibe-coding", type_="tutorial",
-                platforms=("blog", "zhihu"), sources=("notes/flomo/Idea.md",), today=date(2026, 9, 22),
+                platforms=("blog", "zhihu"), sources=("notes/flomo/origin/Idea.md",), today=date(2026, 9, 22),
             )
             self.assertEqual("2026-001", project.id)
             self.assertEqual("2026/2026-09-22-Desktop Status Screen", project.directory.relative_to(config.content_root).as_posix())
             card = ContentProject.load(project.directory)
             self.assertEqual(("vibe-coding", "tutorial", "blog"), (card.pillar, card.type, card.primary))
-            self.assertEqual(("notes/flomo/Idea.md",), card.sources)
+            self.assertEqual(("notes/flomo/origin/Idea.md",), card.sources)
             self.assertIn("# Desktop Status Screen", card.body)
             brief = (project.directory / "brief.md").read_text(encoding="utf-8")
             self.assertIn("## Core question", brief)
-            self.assertIn("### [[notes/flomo/Idea|Idea]]", brief)
+            self.assertIn("### [[notes/flomo/origin/Idea|Idea]]", brief)
             self.assertIn("> the note could not be read", brief)  # the note itself was never collected here
             self.assertTrue((config.templates_root / "project.md").is_file())
             # a pillar gets its own editable copy, seeded from the packaged default
@@ -99,13 +99,13 @@ class NewCommandTest(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 code = main([
                     "new", "Desk Lighting", "--vault", str(vault), "--pillar", "desk-setup",
-                    "--type", "tutorial", "--platform", "blog", "--status", "approved",
+                    "--type", "tutorial", "--platform", "blog", "--status", "making",
                 ])
             self.assertEqual(0, code)
             self.assertIn("Created 2026-", out.getvalue())
             cards = list((vault / "content").rglob("project.md"))
             self.assertEqual(1, len(cards))
-            self.assertEqual("approved", ContentProject.load(cards[0].parent).status)
+            self.assertEqual("making", ContentProject.load(cards[0].parent).status)
 
     def test_reports_an_unknown_pillar_without_creating_anything(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

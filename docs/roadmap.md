@@ -23,6 +23,9 @@ sources ──► notes mirror ──► enrich ──► content projects ─�
                                               feedback (metrics, comments) ┘
 ```
 
+The state machines the whole pipeline runs on are defined once in
+[the state model](state-model.md).
+
 Design principles that hold across every phase:
 
 - Files are the only interface between stages. Gates are Markdown files a
@@ -144,7 +147,7 @@ cli: init · doctor · sync [--commit] · missing · digest
                                    │
                               pipeline ──► vault/notes/<source>/*.md  +  state/
                                    │
-                              digest/ ──► vault/digest/{daily,weekly,monthly,yearly}/   periodic rollups, each level optional
+                              digest/ ──► vault/notes/<source>/digest/{daily,weekly,monthly,yearly}/   self-contained rollups
                                    │
                               optional git commit
 horizontal: models · vault · normalize · state (file | sqlite) · logging without content
@@ -160,18 +163,19 @@ same adapter contract.
 **Status.** Steps 1 to 5 of [the Phase 2 plan](phase-2.md) are implemented:
 project cards, scaffolding, `new`, `status`, `week`, the index and Bases
 views, assignments in state, rule-based classification, and gate 1 through
-`propose` and `apply`. The Notion management board (step 6) is left until the
+`review` and `apply`. The Notion management board (step 6) is left until the
 rest has been used for real.
 
-**Goal.** The pipeline has its core object, the content project, and a weekly
-review that turns collected fragments into approved projects with one human
-decision.
+**Goal.** The pipeline has its core object, the content project, and a review
+round that turns collected material into projects being made, with one
+human decision.
 
 **Scope.** `ContentProject` model and `project.md` front matter; configurable
 production stages (`project.stages`, see "Production stages") that decide
 the project folder layout while the status machine stays fixed; the status
-machine (`candidate → approved → gathering → drafted → reviewed → adapted →
-staged → published → retrospected → archived`); `new`, `status`, `week`; a machine-maintained `content/INDEX.md` table (date,
+machine (`candidate → making → ready → published → retrospected`, plus
+`dropped` for a piece set aside in `trash/`, see
+[the state model](state-model.md)); `new`, `status`, `week`, `material`, `drop`, `restore`; a machine-maintained `content/INDEX.md` table (date,
 title, pillar, type, status, platforms) regenerated on every status change
 as a browsing view, plus a generated `content/projects.base` for Obsidian
 Bases; an optional Notion board: a projection of the cards into a database
@@ -191,35 +195,35 @@ front matter metadata and only shapes directories when `project.path`
 includes `{pillar}`; brief
 templates per content pillar; deterministic `enrich/` (exact and normalized
 dedupe, rule-based classification from tags and folders, ranking by fragment
-count, recency, and question density); `propose` appends a candidates
-section with checkboxes to the weekly digest, which is the gate-1 file, and
-`apply` reads the ticked decisions. New state tables:
-`assignments`, `projects`, `gates`.
+count, recency, and question density); `review` writes `review/<date>.md`,
+the gate-1 sheet, listing everything that has no outcome yet under the
+outcome a rule suggests, and `apply` records where each line ended up and
+turns the `used` ones into projects. New state table: `assignments`; projects
+themselves are files, not rows.
 
 **Done when.** The user's current piece of content is tracked as a project
-created from a weekly review file, with its fragments linked into the brief.
-Unclassified fragments appear in the review file with empty checkboxes rather
-than being guessed.
+created from a review sheet, with the material it came from linked into the
+brief. Unclassified material sits under `undecided` rather than being
+guessed into a pillar.
 
 **Architecture at the end of Phase 2.**
 
 ```text
-cli: everything in Phase 1 + propose · apply · new · status · week
+cli: everything in Phase 1 + review · apply · new · status · week · material · drop · restore
         │
-sources/ ──► vault/notes/ ──► enrich/ (dedupe · rule classify · rank) ──► state.assignments
+sources/ ──► vault/notes/<source>/origin/ ──► enrich/ (dedupe · rule classify · rank) ──► state.assignments
                                                                               │
-                                   gates/propose ──► vault/digest/weekly/<year>/<week>.md ◄── human ticks (gate 1)
+                                   gates/review ──► vault/review/<date>.md ◄── the person sorts material (gate 1)
                                    gates/apply   ──► projects/ (scaffold · state machine)
                                                           │
                                                      vault/content/<project>/{project,brief}.md
-                                                     state.projects · state.gates
-new vault directories: content/ · templates/brief-<pillar>.md (gate 1 lives in the weekly digest)
+new vault directories: content/ · review/ · templates/brief-<pillar>.md
 ```
 
 ## Phase 3 — Work logs, composition, and delivery (mode A complete)
 
-**Goal.** A piece of content goes from approved project to published blog
-post and ready-to-paste packages for the other platforms, using only commands
+**Goal.** A piece of content goes from a project being made to a published
+blog post and ready-to-paste packages for the other platforms, using only commands
 and a text editor.
 
 **Scope.** Work-log adapters (git commits and diffs, coding session
@@ -314,9 +318,14 @@ llm/enhancers: classify · brief · draft · adapt · review
 everything in Phase 4 unchanged
 ```
 
-## Digests: aggregation by time granularity
+## Digests: one tree per source, aggregated by time
 
-Digests roll collected items up by period. They start in Phase 1 because they
+Digests roll collected items up by period inside the source's own directory,
+which splits in two: `notes/<source>/origin/` holds what was collected and
+`notes/<source>/digest/<level>/` holds the rollups over it. Every level holds its
+whole period rather than pointing at the level below: a week contains the
+week, a month contains the month. That is what makes archiving the lower
+level safe, and what makes a digest worth reading on its own. They start in Phase 1 because they
 need nothing but the notes mirror, and later phases attach to them: the
 weekly digest carries gate 1 from Phase 2, projects gather material through
 the daily digests from Phase 3, the monthly digest becomes the monthly
@@ -346,9 +355,6 @@ digest:
   llm:                        # mode B only
     summary: true             # extra <period>.summary.md
     placement: separate       # separate | inline
-  review_status:              # user-defined; the machine never changes it
-    values: [unread, reviewed, promoted]
-    default: unread
 ```
 
 Semantics:
@@ -362,13 +368,17 @@ Semantics:
   the source gives no time. Each daily digest lists items first seen that day
   and, separately, items updated that day.
 - Lifecycle state is fixed and machine-owned: `open → closed → rolled →
-  archived`. `review_status` is a separate, user-defined field.
+  archived`. Digests carry no review state; see
+  [the state model](state-model.md).
 - Missed periods are generated on the next run; the open period is rebuilt
   on every sync; closed periods change only with `--regenerate`.
+- `include_days`, `include_weeks` and `include_months` decide whether a level
+  carries the content of the level below; with them off it keeps only its
+  front matter counts.
 - Archiving of lower levels is a boolean per level and only acts when
-  `archive.enabled` is true. With `archive.mode: copy` or no archiving,
-  the higher level embeds the lower documents (`![[digest/daily/…]]`); with
-  `move`, it merges their content because the files leave their place.
+  `archive.enabled` is true. Because every level is rendered from state and
+  already holds its whole period, moving or copying the lower documents away
+  never takes content out of the higher ones.
 
 ## Production stages
 
@@ -450,12 +460,14 @@ into an empty local directory.
 Layout by phase, cumulative:
 
 ```text
-Phase 1   <vault>/asterism.yaml · notes/<source>/*.md · state/ · logs/ · .gitignore
-          <vault>/digest/daily/<year>/<date>.md · weekly/<year>/<year>-W<week>.md · monthly/<year>/<year>-<month>.md · yearly/<year>.md
-          <vault>/archive/digest/… or <archive.root>/digest/… for rolled-up lower levels when archiving is on
-Phase 2 + (gate 1 is a candidates section in the weekly digest)
+Phase 1   <vault>/asterism.yaml · state/ · logs/ · .gitignore
+          <vault>/notes/<source>/origin/<the source's own hierarchy>/<title>.md
+          <vault>/notes/<source>/digest/{daily,weekly,monthly,yearly}/<year>/<label>.md
+          <vault>/archive/notes/… or <archive.root>/notes/… for rolled-up lower levels when archiving is on
+Phase 2 + <vault>/review/<date>.md          the review sheet, gate 1
           <vault>/content/INDEX.md · <vault>/content/projects.base
-          <vault>/content/<year>/<date>-<slug>/{project,brief}.md
+          <vault>/trash/<year>/<project>/   projects set aside
+          <vault>/content/<year>/<date>-<title>/{project,brief}.md
           <vault>/templates/{project,brief-<pillar>}.md
 Phase 3 + <vault>/notes/worklog/{git,sessions,media}/
           <vault>/content/<year>/<date>-<slug>/{draft,assets}.md · exports/<platform>.md

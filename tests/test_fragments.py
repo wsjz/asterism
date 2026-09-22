@@ -8,7 +8,7 @@ from asterism.sources.fragments import note_date, split_daily_log
 
 SH = ZoneInfo("Asia/Shanghai")
 
-DAILY = (
+DAILY_HTML = (
     "2026-09-21 随手记\n"
     "开头没有时间戳的一段。\n"
     "\n"
@@ -19,6 +19,12 @@ DAILY = (
     "22:10 想试试让 Claude 读取 Home Assistant 状态。\n"
     "25:99 这不是时间戳\n"
 )
+DAILY = DAILY_HTML  # the splitter works on Markdown, which is what the adapter passes it
+
+
+def as_html(text: str) -> str:
+    """The shape Apple Notes hands over: one div per line."""
+    return "".join(f"<div>{line or '<br>'}</div>" for line in text.splitlines())
 
 
 class FragmentSplitTest(unittest.TestCase):
@@ -57,7 +63,7 @@ class AppleNotesFragmentTest(unittest.TestCase):
             "account": "iCloud",
             "folder": "Notes/00 随手记",
             "title": "2026-09-21 随手记",
-            "content_text": DAILY,
+            "content_text": as_html(DAILY),
             "created_at": "2026-09-21T08:00:00",
             "updated_at": "2026-09-21T22:11:00",
         }
@@ -74,17 +80,31 @@ class AppleNotesFragmentTest(unittest.TestCase):
         source = AppleNotesSource(daily_log_folders=("00 随手记",), timezone="Asia/Shanghai")
         record = {
             "source_id": "n1", "account": "iCloud", "folder": "Ideas",
-            "title": "Whole", "content_text": "Whole\n09:20 still one note",
+            "title": "Whole", "content_text": as_html("Whole\n09:20 still one note"),
             "created_at": None, "updated_at": None,
         }
         items = source._parse_record(record)
         self.assertEqual(1, len(items))
         self.assertEqual("n1", items[0].source_id)
 
+    def test_the_html_body_becomes_markdown_and_the_title_heading_is_dropped(self) -> None:
+        source = AppleNotesSource()
+        record = {
+            "source_id": "n1", "account": "iCloud", "folder": "Notes", "title": "Week6",
+            "content_text": '<div><h1>Week6</h1></div><ul class="Checklist"><li class="checked">shipped</li>'
+                            '<li class="unchecked">todo</li></ul><div><b>bold</b></div>',
+            "created_at": None, "updated_at": None,
+        }
+        item = source._parse_record(record)[0]
+        self.assertNotIn("# Week6", item.content_text)  # the title is already a field
+        self.assertIn("- [x] shipped", item.content_text)
+        self.assertIn("- [ ] todo", item.content_text)
+        self.assertIn("**bold**", item.content_text)
+
     def test_recently_deleted_is_skipped_by_default(self) -> None:
         source = AppleNotesSource()
         record = {"source_id": "d1", "account": "iCloud", "folder": "Recently Deleted", "title": "Gone",
-                  "content_text": "Gone", "created_at": None, "updated_at": None}
+                  "content_text": as_html("Gone"), "created_at": None, "updated_at": None}
         self.assertEqual([], source._parse_record(record))
         record["folder"] = "Recently Deleted/Sub"
         self.assertEqual([], source._parse_record(record))

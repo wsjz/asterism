@@ -89,13 +89,13 @@ class StatusAndWeekTest(unittest.TestCase):
     def test_status_groups_and_filters(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             config = _config(temporary)
-            create_project(config, title="Desk Lighting", pillar="desk-setup", status="drafted", today=date(2026, 9, 20))
+            create_project(config, title="Desk Lighting", pillar="desk-setup", status="making", today=date(2026, 9, 20))
             create_project(config, title="Status Screen", pillar="vibe-coding", status="candidate", today=date(2026, 9, 22))
 
             code, out, _ = _run("status", "--vault", str(config.vault))
             self.assertEqual(0, code)
-            self.assertIn("2 project(s): 1 candidate, 1 drafted", out)
-            self.assertLess(out.index("candidate"), out.index("drafted"))
+            self.assertIn("2 project(s): 1 candidate, 1 making", out)
+            self.assertLess(out.index("candidate"), out.index("making"))
 
             _, filtered, _ = _run("status", "--vault", str(config.vault), "--pillar", "desk-setup")
             self.assertIn("Desk Lighting", filtered)
@@ -115,16 +115,50 @@ class StatusAndWeekTest(unittest.TestCase):
             self.assertIn("Fine", out)
             self.assertIn("unreadable", err)
 
+    def test_drop_and_restore_move_the_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            project = create_project(config, title="Abandoned Idea", status="making", today=date(2026, 9, 22))
+            relative = project.directory.relative_to(config.content_root).as_posix()
+
+            code, out, err = _run("drop", project.id, "--vault", str(config.vault))
+            self.assertEqual(0, code, err)
+            self.assertIn("trash/", out)
+            self.assertFalse(project.directory.exists())
+            moved = config.trash_root / relative
+            self.assertTrue((moved / "brief.md").is_file())
+            self.assertEqual("dropped", ContentProject.load(moved).status)
+            self.assertFalse((config.content_root / "2026").exists())  # the empty year folder is pruned
+
+            self.assertEqual((), load_projects(config).projects)
+            self.assertEqual(1, len(load_projects(config, include_dropped=True).projects))
+            _, listed, _ = _run("status", "--vault", str(config.vault), "--include-dropped")
+            self.assertIn("dropped", listed)
+
+            code, out, err = _run("restore", project.id, "--vault", str(config.vault))
+            self.assertEqual(0, code, err)
+            back = config.content_root / relative
+            self.assertTrue((back / "brief.md").is_file())
+            self.assertEqual("candidate", ContentProject.load(back).status)
+            self.assertFalse(config.trash_root.joinpath(relative).exists())
+
+    def test_dropping_an_unknown_project_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            code, _, err = _run("drop", "2026-999", "--vault", str(config.vault))
+            self.assertEqual(1, code)
+            self.assertIn("no live project", err)
+
     def test_week_shows_what_is_waiting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             config = _config(temporary)
             code, out, _ = _run("week", "--vault", str(config.vault))
             self.assertEqual(0, code)
             self.assertIn("Nothing in flight", out)
-            create_project(config, title="Status Screen", status="drafted", today=date(2026, 9, 22))
+            create_project(config, title="Status Screen", status="making", today=date(2026, 9, 22))
             _, out, _ = _run("week", "--vault", str(config.vault))
             self.assertIn("In flight (1)", out)
-            self.assertIn("waiting: review the draft", out)
+            self.assertIn("waiting: gather the material and write the draft", out)
 
 
 if __name__ == "__main__":

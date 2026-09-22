@@ -29,3 +29,8 @@ sources:
           updated_at: updated_at
           tags: tags
           exclude: [slug]
+
+# Review: how often you sort collected material. Rules are yours to write;
+# without them every item is listed as undecided and nothing is automatic.
+review:
+  every: 3

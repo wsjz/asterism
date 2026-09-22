@@ -29,6 +29,7 @@ def archive_digest(config: Config, state: StateBackend, digest: DigestState) -> 
         source.unlink()
     state.save_digest(
         DigestState(
+            source=digest.source,
             level=digest.level,
             period_start=digest.period_start,
             period_end=digest.period_end,

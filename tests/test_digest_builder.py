@@ -53,37 +53,37 @@ class DigestBuilderTest(unittest.TestCase):
                 Pipeline(FakeSource(items), state, vault).sync()
                 messages = DigestBuilder(config, state, now=now).run()
 
-                daily = (vault / "digest" / "daily" / "2026" / "2026-09-21.md").read_text(encoding="utf-8")
+                daily = (vault / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-09-21.md").read_text(encoding="utf-8")
                 fields, body = parse_front_matter(daily)
                 self.assertEqual("day", fields["digest"])
                 self.assertEqual("closed", fields["state"])
-                self.assertEqual("unread", fields["review_status"])
-                self.assertEqual({"flomo": 2}, fields["sources"])
-                self.assertIn("- **09:20** [[notes/flomo/Morning idea|Morning idea]]", body)
+                self.assertEqual("flomo", fields["source"])
+                self.assertIn("- **09:20** [[notes/flomo/origin/Morning idea|Morning idea]]", body)
                 self.assertIn("  A short body.", body)
                 self.assertIn(" ...", body)  # long body excerpted
 
-                weekly = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
+                weekly = (vault / "notes" / "flomo" / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
                 wfields, wbody = parse_front_matter(weekly)
                 self.assertEqual(("2026-09-17", "2026-09-23"), (wfields["period_start"], wfields["period_end"]))
                 self.assertEqual(3, wfields["items"])
                 # the week holds the week's own content, not a pointer to the days
+                self.assertIn("# 2026-W39", wbody)
                 self.assertIn("## 2026-09-21", wbody)
-                self.assertIn("### New", wbody)
-                self.assertIn("#### flomo", wbody)
+                self.assertIn("- **09:20** [[notes/flomo/origin/Morning idea|Morning idea]]", wbody)
                 self.assertIn("A short body.", wbody)
                 self.assertIn("## 2026-09-22", wbody)
+                self.assertIn("Body 3", wbody)
                 self.assertNotIn("![[", wbody)
                 self.assertNotIn("no digest", wbody)
 
-                self.assertEqual("rolled", state.get_digest("day", "2026-09-21").state)
-                self.assertIsNone(state.get_digest("week", "2026-09-24"))  # open week without items: no document
-                self.assertFalse((vault / "digest" / "weekly" / "2026" / "2026-W40.md").exists())
-                self.assertTrue(any("week 2026-W39 generated" in m for m in messages))
-                self.assertTrue((vault / "digest" / "monthly" / "2026" / "2026-09.md").exists())  # open month rebuilt
-                self.assertFalse((vault / "digest" / "yearly").exists())
+                self.assertEqual("rolled", state.get_digest("flomo", "day", "2026-09-21").state)
+                self.assertIsNone(state.get_digest("flomo", "week", "2026-09-24"))  # open week without items: no document
+                self.assertFalse((vault / "notes" / "flomo" / "digest" / "weekly" / "2026" / "2026-W40.md").exists())
+                self.assertTrue(any("flomo week 2026-W39 generated" in m for m in messages))
+                self.assertTrue((vault / "notes" / "flomo" / "digest" / "monthly" / "2026" / "2026-09.md").exists())  # open month rebuilt
+                self.assertFalse((vault / "notes" / "flomo" / "digest" / "yearly").exists())
 
-    def test_regenerate_preserves_review_status_and_is_idempotent(self) -> None:
+    def test_regenerate_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             config = load_config(vault)
@@ -93,14 +93,10 @@ class DigestBuilderTest(unittest.TestCase):
                 Pipeline(FakeSource([item]), state, vault).sync()
                 builder = DigestBuilder(config, state, now=now)
                 builder.run()
-                path = vault / "digest" / "daily" / "2026" / "2026-09-21.md"
-                text = path.read_text(encoding="utf-8").replace('review_status: "unread"', 'review_status: "reviewed"')
-                path.write_text(text, encoding="utf-8")
-                builder.regenerate(parse_label("2026-09-21", config.digest))
-                fields, _ = parse_front_matter(path.read_text(encoding="utf-8"))
-                self.assertEqual("reviewed", fields["review_status"])
+                path = vault / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-09-21.md"
                 first = path.read_text(encoding="utf-8")
-                builder.regenerate(parse_label("2026-09-21", config.digest))
+                self.assertNotIn("review_status", first)  # digests carry no review state of their own
+                builder.regenerate(parse_label("2026-09-21", config.digest), "flomo")
                 self.assertEqual(first, path.read_text(encoding="utf-8"))
 
     def test_markdown_links_and_disabled_week_falls_back_to_days(self) -> None:
@@ -112,12 +108,12 @@ class DigestBuilderTest(unittest.TestCase):
             with FileStateBackend(vault / "state" / "manifest.json") as state:
                 Pipeline(FakeSource([item]), state, vault).sync()
                 DigestBuilder(config, state, now=now).run()
-                daily = (vault / "digest" / "daily" / "2026" / "2026-08-05.md").read_text(encoding="utf-8")
-                self.assertIn("[Idea](../../../notes/flomo/Idea.md)", daily)
-                monthly = (vault / "digest" / "monthly" / "2026" / "2026-08.md").read_text(encoding="utf-8")
+                daily = (vault / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-08-05.md").read_text(encoding="utf-8")
+                self.assertIn("[Idea](../../../origin/Idea.md)", daily)  # rollups sit beside the origin
+                monthly = (vault / "notes" / "flomo" / "digest" / "monthly" / "2026" / "2026-08.md").read_text(encoding="utf-8")
                 # weeks are off, so the month aggregates the days directly
                 self.assertIn("## 2026-08-05", monthly)
-                self.assertIn("[Idea](../../../notes/flomo/Idea.md)", monthly)
+                self.assertIn("[Idea](../../../origin/Idea.md)", monthly)
                 self.assertIn("Body", monthly)
                 self.assertNotIn("2026-08-06", monthly)
 
@@ -136,19 +132,19 @@ class DigestBuilderTest(unittest.TestCase):
             with FileStateBackend(vault / "state" / "manifest.json") as state:
                 Pipeline(FakeSource([item]), state, vault).sync()
                 messages = DigestBuilder(config, state, now=now).run()
-                day_file = vault / "digest" / "daily" / "2026" / "2026-09-21.md"
+                day_file = vault / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-09-21.md"
                 self.assertFalse(day_file.exists())
-                self.assertTrue((archive_root / "digest" / "daily" / "2026" / "2026-09-21.md").is_file())
-                weekly = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
+                self.assertTrue((archive_root / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-09-21.md").is_file())
+                weekly = (vault / "notes" / "flomo" / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
                 self.assertIn("## 2026-09-21", weekly)
                 self.assertIn("Body text", weekly)  # the week keeps the content the archived day held
                 self.assertNotIn("![[", weekly)
-                self.assertEqual("archived", state.get_digest("day", "2026-09-21").state)
+                self.assertEqual("archived", state.get_digest("flomo", "day", "2026-09-21").state)
                 self.assertTrue(any("moved to" in m for m in messages))
                 # rebuilding the week after the day file is gone loses nothing:
                 # every level is rendered from state, not from the level below
-                DigestBuilder(config, state, now=now).regenerate(parse_label("2026-W39", config.digest))
-                rebuilt = (vault / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
+                DigestBuilder(config, state, now=now).regenerate(parse_label("2026-W39", config.digest), "flomo")
+                rebuilt = (vault / "notes" / "flomo" / "digest" / "weekly" / "2026" / "2026-W39.md").read_text(encoding="utf-8")
                 self.assertIn("## 2026-09-21", rebuilt)
                 self.assertIn("Body text", rebuilt)
 
@@ -160,9 +156,9 @@ class DigestBuilderTest(unittest.TestCase):
             with FileStateBackend(vault / "state" / "manifest.json") as state:
                 Pipeline(FakeSource([item]), state, vault).sync()
                 DigestBuilder(config, state, now=datetime(2026, 9, 25, 9, 0, tzinfo=SH)).run()
-                self.assertTrue((vault / "digest" / "daily" / "2026" / "2026-09-21.md").exists())
+                self.assertTrue((vault / "notes" / "flomo" / "digest" / "daily" / "2026" / "2026-09-21.md").exists())
                 self.assertFalse((vault / "archive").exists())
-                self.assertEqual("rolled", state.get_digest("day", "2026-09-21").state)
+                self.assertEqual("rolled", state.get_digest("flomo", "day", "2026-09-21").state)
 
     def test_no_items_reports_and_writes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

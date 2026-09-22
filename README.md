@@ -53,9 +53,10 @@ Phase 2, content projects, adds:
   per-pillar template;
 - `new`, `status`, and `week`, plus a regenerated `content/INDEX.md` and a
   seeded Obsidian Bases view;
-- the first decision gate: `propose` lists the week's undecided items as
-  checkboxes in that week's digest, and `apply` turns the ticked ones into
-  projects, recording the decision so they are not asked about again.
+- the first decision gate: `review` writes a sheet of everything that has no
+  outcome yet, one heading per outcome, and `apply` records where each line
+  ended up and turns the `used` ones into projects, so nothing is asked about
+  twice.
 
 Drafts, publishing, and optional LLM enhancement come in later phases.
 
@@ -63,6 +64,106 @@ Every project field lives in its card in the vault, so the pipeline runs
 complete without any external service. A Notion board, a NAS, and a language
 model are projections and accelerators that can be added or removed at any
 time; losing one loses convenience, never content or state.
+
+## Architecture
+
+Every stage writes files into the vault and reads them back; nothing is passed
+in memory between commands, so each one can be run on its own and re-run
+safely. The state machines are defined once in
+[the state model](docs/state-model.md).
+
+### Phase 1 — collection and digests, `asterism sync`
+
+One command collects and rolls up. Each adapter turns its source into
+validated `SourceItem` objects; the pipeline writes one Markdown file per item
+and the digest builder rolls those items up by period. Both live in the
+source's own directory.
+
+```text
+Apple Notes   flomo export   Cubox CLI   Markdown dirs   Notion API   opencli
+     |            |             |             |             |            |
+     +------------+-------------+------+------+-------------+------------+
+                                       |
+                        sources/  each adapter calls normalize/
+                        (HTML to Markdown, dates, URLs, the title rule)
+                                       |
+                            SourceItem (schema 1)
+                    core: source, source_id, content_text
+                    common: title, url, author, parent, tags,
+                            created_at, updated_at, origin
+                    free:   source_meta
+                                       |
+        +------------------------------+------------------------------+
+        |                                                             |
+   pipeline/                                                    digest/
+   one file per item, atomic write,                    periods, self-contained
+   hierarchy mirrored, moves followed                  levels, sparse output
+        |                                                             |
+   notes/<source>/origin/<the source's folders>/<title>.md   notes/<source>/digest/
+                                                              {daily,weekly,monthly,yearly}/
+        |                                                             |
+        +------------------------------+------------------------------+
+                                       |
+                    state/  items, digests, assignments
+                    (file or SQLite, same interface, migrated)
+                                       |
+                            optional `git commit`
+```
+
+Commands: `init`, `doctor`, `sync [--commit] [--dry-run]`, `digest`,
+`missing`, `migrate-config`.
+
+### Phase 2 — sorting and content projects, `asterism review` then `apply`
+
+Collection never decides anything. Phase 2 gives every collected item an
+outcome and turns the chosen ones into content projects. The person appears
+once, in the middle.
+
+```text
+   notes/<source>/{origin,digest}/            state/assignments
+              |                                      |
+              +------------------+-------------------+
+                                 |
+                  gates/review  coverage: the fewest closed digests
+                  that still hold undecided items, coarsest first
+                                 |
+                  enrich/classify  pillar by rule, never guessed
+                                 |
+                  review/<date>.md      <-- the person moves lines
+                  sections: used | later | reference | dropped | undecided
+                  under used, a `### topic` gathers the lines of one piece
+                                 |
+                  `asterism apply`
+                                 |
+        +------------------------+------------------------+
+        |                                                 |
+  state/assignments                              projects/scaffold
+  later | reference | used | dropped             content/<year>/<date>-<title>/
+                                                   project.md   the card, YAML front matter
+                                                   brief.md     from the pillar's template,
+                                                                with the source quoted in it
+                                                 content/INDEX.md, projects.base
+                                                 trash/  projects set aside
+```
+
+Commands: `review [--since]`, `apply`, `material`, `new`, `status`, `week`,
+`drop`, `restore`.
+
+### Phase 3 and later — planned
+
+Phase 3 attaches work logs and media to a project and composes a draft
+skeleton from them; phase 4 turns the draft into platform versions and
+publishes; phase 5 brings metrics and comments back as new material; phase 6
+adds an optional language model over the deterministic artifacts. See
+[the roadmap](docs/roadmap.md) for the scope and the architecture at the end
+of each one.
+
+```text
+phase 3   sources/worklog + compose/  -> content/<project>/draft.md, assets.md
+phase 4   compose/adapt + deliver/    -> content/<project>/exports/<platform>.md
+phase 5   feedback/ + scheduler/      -> content/<project>/review.md, new material
+phase 6   llm/                        -> the same artifacts, enhanced, off by default
+```
 
 ## Requirements
 
@@ -240,14 +341,17 @@ the site; exit code 69 or 77 from opencli is reported with that guidance.
 
 ## Digests
 
-After each sync Asterism rolls collected items into `digest/`: one document
-per day, week, month, and (if enabled) year. Each level is independent and
+After each sync Asterism rolls collected items up inside the source's own
+directory, which splits in two: `notes/<source>/origin/` holds what was
+collected and `notes/<source>/digest/{daily,weekly,monthly,yearly}/` holds the
+rollups over it. Every level holds its whole period:
+a week contains the week's items, a month contains the month's, so a higher
+level is readable on its own and archiving the lower one away loses nothing. Each level is independent and
 ends its period on a configured day; the open period is rebuilt on every
 sync, closed periods are generated once and can be re-done with
-`asterism digest --regenerate 2026-W39`. Higher levels embed the lower
-documents with Obsidian links, or merge their text when the lower level is
-archived by moving. `review_status` in a digest's front matter is yours to
-edit; the machine never changes it.
+`asterism digest --regenerate 2026-W39`. `include_days` and its siblings decide whether a level carries the content of
+the level below. A digest carries no review state of its own: whether a period
+has been dealt with is derived from the decisions on its items.
 
 ```yaml
 digest:
@@ -270,21 +374,23 @@ filesystem, and shows which archive switches are masked.
 ## Content projects
 
 A project is a folder under `content/` holding the card and the brief for one
-piece. The weekly session is one file: open the week's digest, tick what is
-worth making, and apply.
+piece. The session is one file: `review` writes a sheet of what has no outcome
+yet, you move each line under the outcome it deserves, and `apply` records
+them.
 
 ```bash
-asterism propose --vault ~/Documents/AsterismVault            # list this week's undecided items
-# tick the lines you want in the digest, then
-asterism apply --vault ~/Documents/AsterismVault              # each tick becomes a project
+asterism review --vault ~/Documents/AsterismVault             # write review/<date>.md
+# move lines under used / later / reference / dropped; under used, gather the
+# lines of one piece beneath a `### topic` heading, then
+asterism apply --vault ~/Documents/AsterismVault              # each topic becomes one project
 asterism status --vault ~/Documents/AsterismVault --pillar desk-setup
 asterism week --vault ~/Documents/AsterismVault               # what is in flight and what waits
 asterism new "Desk lighting" --vault ~/Documents/AsterismVault --pillar desk-setup --type tutorial
 ```
 
-Pillars decide how fragments are classified and which brief template a new
-project starts from; a fragment matching no pillar is listed as unclassified
-rather than guessed:
+Pillars decide how collected material is classified and which brief template
+a new project starts from; material matching no pillar carries no pillar
+rather than a guessed one:
 
 ```yaml
 content:
@@ -297,6 +403,11 @@ project:
   path: "{year}/{date}-{title}"   # or "{pillar}/{date}-{title}"
 ```
 
+A piece you decide not to finish is dropped: `asterism drop <id>` moves its
+folder to `trash/` with nothing deleted, and `asterism restore <id>` brings it
+back as a candidate. The five state machines the pipeline runs on are defined
+in [the state model](docs/state-model.md).
+
 Templates are seeded into the vault the first time they are used
 (`templates/project.md`, `templates/brief-<pillar>.md`), so editing them
 changes every later project. Status is yours: the machine sets it when it
@@ -307,13 +418,13 @@ edit in Obsidian.
 written to:
 
 ```text
-~/Documents/AsterismVault/notes/apple-notes/
+~/Documents/AsterismVault/notes/apple-notes/origin/
 ```
 
 Every source controls its own safe directory name, producing paths such as
-`notes/flomo/`, `notes/cubox/`, `notes/markdown/`, `notes/notion/`, and
-`notes/opencli-<collection>/`. Below that, the source's own hierarchy is
-mirrored: Apple Notes folders, Cubox folders, Markdown directories, and Notion
+`notes/flomo/origin/`, `notes/cubox/origin/`, and
+`notes/opencli-<collection>/origin/`. Below `origin/`, the source's own
+hierarchy is mirrored: Apple Notes folders, Cubox folders, Markdown directories, and Notion
 parent pages become subdirectories, and a note that moves in its source moves
 on disk too. Asterism does not choose the project repository
 as the vault automatically.

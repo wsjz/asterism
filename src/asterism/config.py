@@ -57,8 +57,6 @@ class DigestConfig:
     week: DigestLevelConfig = DigestLevelConfig(enabled=True, run_on=7)
     month: DigestLevelConfig = DigestLevelConfig(enabled=True, run_on=MONTH_RUN_ON_LAST)
     year: DigestLevelConfig = DigestLevelConfig(enabled=False, run_on=12)
-    review_status_values: tuple[str, ...] = ("unread", "reviewed", "promoted")
-    review_status_default: str = "unread"
     llm_summary: bool = False
     llm_placement: str = "separate"
 
@@ -144,21 +142,50 @@ class ArchiveConfig:
     auto_execute: bool = False
 
 
+MATERIAL_DECISIONS: tuple[str, ...] = ("later", "reference", "used", "dropped")
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewRule:
+    """What a source's items are suggested for, and whether to ask at all."""
+
+    source: str  # the source's directory name, as under notes/
+    default: str
+    parent: str | None = None  # limit the rule to a folder and everything under it
+    auto: bool = False  # apply without listing; the sheet shows a one-line summary
+
+    def matches(self, source_dir: str, source_name: str, parent: str) -> bool:
+        if self.source not in (source_dir, source_name):
+            return False
+        if self.parent is None:
+            return True
+        return parent == self.parent or parent.startswith(self.parent + "/")
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewConfig:
+    every: int = 7  # days; only used to say how long it has been
+    rules: tuple[ReviewRule, ...] = ()
+
+    def rule_for(self, source_dir: str, source_name: str, parent: str) -> ReviewRule | None:
+        return next(
+            (rule for rule in self.rules if rule.matches(source_dir, source_name, parent)), None
+        )
+
+
 DEFAULT_TYPES: tuple[str, ...] = ("tutorial", "review", "makeover", "opinion", "checklist")
 DEFAULT_PLATFORMS: tuple[str, ...] = ("blog", "zhihu", "xiaohongshu", "douyin", "sspai", "flowus")
 PROJECT_LAYOUTS = frozenset({"flat", "staged"})
+# Five steps, three gates, and one exit. See docs/state-model.md.
 PROJECT_STATUSES: tuple[str, ...] = (
     "candidate",
-    "approved",
-    "gathering",
-    "drafted",
-    "reviewed",
-    "adapted",
-    "staged",
+    "making",
+    "ready",
     "published",
     "retrospected",
-    "archived",
+    "dropped",
 )
+LIVE_PROJECT_STATUSES: tuple[str, ...] = tuple(s for s in PROJECT_STATUSES if s != "dropped")
 PATH_PLACEHOLDERS = frozenset({"year", "date", "title", "id", "pillar", "type"})
 BINDING_NAMES = frozenset({"unassigned_media", "platform_exports", "covers"})
 
@@ -250,11 +277,8 @@ class Config:
     state_dir_override: Path | None = None
     opencli: OpencliConfig = OpencliConfig()
     content: ContentConfig = ContentConfig()
+    review: ReviewConfig = ReviewConfig()
     project: ProjectConfig = ProjectConfig()
-
-    @property
-    def digest_root(self) -> Path:
-        return self.vault / "digest"
 
     @property
     def archive_root(self) -> Path:
@@ -263,6 +287,11 @@ class Config:
     @property
     def content_root(self) -> Path:
         return self.vault / "content"
+
+    @property
+    def trash_root(self) -> Path:
+        """Where dropped projects wait; nothing is ever deleted."""
+        return self.vault / "trash"
 
     @property
     def templates_root(self) -> Path:
@@ -411,6 +440,14 @@ def _default_config_text(state_backend: str) -> str:
         "  #       args: { limit: 200 }\n"
         "  #       map: { id: id, url: url, content: [text], created_at: created_at, author: author }\n"
         "\n"
+        "# Review: how often you sort collected material, and what each source\n"
+        "# is suggested for. A rule with auto: true is applied without listing.\n"
+        "# review:\n"
+        "#   every: 3\n"
+        "#   rules:\n"
+        "#     - { source: apple-notes, parent: Daily Log, default: dropped, auto: true }\n"
+        "#     - { source: cubox, default: reference }\n"
+        "\n"
         "# Link style in generated Markdown: wikilink (Obsidian) or markdown.\n"
         "links: wikilink\n"
         "\n"
@@ -506,29 +543,70 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         raise ConfigError("links must be 'wikilink' or 'markdown'")
 
     content = _content_config(_table(raw, "content"))
+    review = _review_config(_table(raw, "review"))
     project = _project_config(_table(raw, "project"), content)
 
     return Config(
-        root,
-        backend,
-        account,
-        export_path,
-        markdown_roots,
-        root_page_ids,
-        data_source_ids,
-        discover_all,
-        daily_log_folders,
-        apple_timezone,
-        exclude_folders,
-        digest,
-        links,
-        storage,
-        archive,
-        state_dir,
-        opencli,
-        content,
-        project,
+        vault=root,
+        state_backend=backend,
+        apple_notes_account=account,
+        flomo_export_path=export_path,
+        markdown_roots=markdown_roots,
+        notion_root_page_ids=root_page_ids,
+        notion_data_source_ids=data_source_ids,
+        notion_discover_all=discover_all,
+        apple_notes_daily_log_folders=daily_log_folders,
+        apple_notes_timezone=apple_timezone,
+        digest=digest,
+        links=links,
+        storage=storage,
+        archive=archive,
+        state_dir_override=state_dir,
+        opencli=opencli,
+        content=content,
+        review=review,
+        project=project,
     )
+
+
+def _review_config(table: Mapping[str, Any]) -> ReviewConfig:
+    defaults = ReviewConfig()
+    every = table.get("every", defaults.every)
+    if not isinstance(every, int) or isinstance(every, bool) or not 1 <= every <= 365:
+        raise ConfigError("review.every must be a number of days between 1 and 365")
+    raw_rules = table.get("rules", [])
+    if not isinstance(raw_rules, list) or len(raw_rules) > 100:
+        raise ConfigError("review.rules must be a list")
+    rules: list[ReviewRule] = []
+    for index, entry in enumerate(raw_rules):
+        label = f"review.rules[{index}]"
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{label} must be a mapping")
+        source = entry.get("source")
+        if not isinstance(source, str) or not source.strip() or len(source) > 64:
+            raise ConfigError(f"{label}.source must name a collected source")
+        default = entry.get("default")
+        if default not in MATERIAL_DECISIONS:
+            raise ConfigError(
+                f"{label}.default must be one of {', '.join(MATERIAL_DECISIONS)}"
+            )
+        auto = _bool(entry, "auto", False, f"{label}.auto")
+        if auto and default == "used":
+            raise ConfigError(
+                f"{label} cannot apply 'used' automatically; making a project is a decision"
+            )
+        parent = _optional_short_string(entry, "parent", f"{label}.parent")
+        if parent is not None:
+            _require_relative(parent, f"{label}.parent")
+        rules.append(
+            ReviewRule(
+                source=source.strip(),
+                default=default,
+                parent=parent,
+                auto=auto,
+            )
+        )
+    return ReviewConfig(every=every, rules=tuple(rules))
 
 
 def _content_config(table: Mapping[str, Any]) -> ContentConfig:
@@ -767,12 +845,6 @@ def _digest_config(table: Mapping[str, Any]) -> DigestConfig:
     if not isinstance(excerpt, int) or isinstance(excerpt, bool) or not 20 <= excerpt <= 10_000:
         raise ConfigError("digest.excerpt_chars must be an integer between 20 and 10000")
 
-    review = _table(table, "review_status", "digest.review_status")
-    values = _string_list(review, "values", "digest.review_status.values") or defaults.review_status_values
-    default_status = review.get("default", values[0])
-    if default_status not in values:
-        raise ConfigError("digest.review_status.default must be one of digest.review_status.values")
-
     llm = _table(table, "llm", "digest.llm")
     llm_summary = _bool(llm, "summary", defaults.llm_summary, "digest.llm.summary")
     placement = llm.get("placement", defaults.llm_placement)
@@ -787,8 +859,6 @@ def _digest_config(table: Mapping[str, Any]) -> DigestConfig:
         week=_digest_level(_table(table, "week", "digest.week"), "week", defaults.week),
         month=_digest_level(_table(table, "month", "digest.month"), "month", defaults.month),
         year=_digest_level(_table(table, "year", "digest.year"), "year", defaults.year),
-        review_status_values=values,
-        review_status_default=default_status,
         llm_summary=llm_summary,
         llm_placement=placement,
     )

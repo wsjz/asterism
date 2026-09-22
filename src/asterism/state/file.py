@@ -12,7 +12,7 @@ from .base import StateBackend, digest_time_in_range, iter_sorted
 
 
 class FileStateBackend(StateBackend):
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, path: Path) -> None:
         self.path = path.resolve(strict=False)
@@ -27,7 +27,7 @@ class FileStateBackend(StateBackend):
         version = data.get("schema_version")
         if not isinstance(data.get("sources"), dict):
             raise ValueError("invalid file state: sources must be an object")
-        if version in (1, 2):
+        if version in (1, 2, 3):
             data = self._migrate(data, version)
             self._data = data
             self._flush()
@@ -41,6 +41,8 @@ class FileStateBackend(StateBackend):
 
     @staticmethod
     def _migrate(data: dict[str, Any], version: int | None) -> dict[str, Any]:
+        if version == 3:
+            data["digests"] = {}  # digests are now per source and are regenerated
         if version == 1:
             for rows in data["sources"].values():
                 for raw in rows.values():
@@ -88,22 +90,27 @@ class FileStateBackend(StateBackend):
     # --- digests -------------------------------------------------------------
 
     @staticmethod
-    def _digest_key(level: str, period_start: str) -> str:
-        return f"{level}:{period_start}"
+    def _digest_key(source: str, level: str, period_start: str) -> str:
+        return f"{source}\0{level}\0{period_start}"
 
-    def get_digest(self, level: str, period_start: str) -> DigestState | None:
-        raw = self._data["digests"].get(self._digest_key(level, period_start))
+    def get_digest(self, source: str, level: str, period_start: str) -> DigestState | None:
+        raw = self._data["digests"].get(self._digest_key(source, level, period_start))
         return DigestState(**raw) if raw else None
 
     def save_digest(self, digest: DigestState) -> None:
-        self._data["digests"][self._digest_key(digest.level, digest.period_start)] = asdict(digest)
+        key = self._digest_key(digest.source, digest.level, digest.period_start)
+        self._data["digests"][key] = asdict(digest)
         self._flush()
 
-    def digests(self, level: str | None = None) -> list[DigestState]:
+    def digests(self, source: str | None = None, level: str | None = None) -> list[DigestState]:
         found = (DigestState(**raw) for raw in self._data["digests"].values())
         return sorted(
-            (digest for digest in found if level is None or digest.level == level),
-            key=lambda digest: (digest.level, digest.period_start),
+            (
+                digest
+                for digest in found
+                if (source is None or digest.source == source) and (level is None or digest.level == level)
+            ),
+            key=lambda digest: (digest.source, digest.level, digest.period_start),
         )
 
     # --- assignments ---------------------------------------------------------

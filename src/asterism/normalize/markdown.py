@@ -7,7 +7,12 @@ import re
 from typing import Iterator
 
 
-BLOCK_TAGS = frozenset({"article", "blockquote", "div", "h1", "h2", "h3", "li", "p", "section"})
+BLOCK_TAGS = frozenset(
+    {"article", "blockquote", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section"}
+)
+HEADING_TAGS = {f"h{level}": level for level in range(1, 7)}
+LIST_TAGS = frozenset({"ul", "ol"})
+INDENT = "  "
 VOID_TAGS = frozenset(
     {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
 )
@@ -78,29 +83,83 @@ def plain_text(node: Node) -> str:
     return "".join(child if isinstance(child, str) else plain_text(child) for child in node.children)
 
 
-def markdown_text(node: Node) -> str:
-    """Render a tree as Markdown: emphasis, links, list items, line breaks, blocks."""
+def markdown_text(node: Node, depth: int = 0, ordered: bool = False, checklist: bool = False) -> str:
+    """Render a tree as Markdown.
+
+    Handles emphasis, links, headings, line breaks, and nested lists including
+    the checklists Apple Notes exports as ``<li class="checked">``. ``depth``
+    counts enclosing lists, so nesting becomes indentation. Some editors nest
+    a list as a sibling of the item it belongs to rather than inside it, which
+    is why the depth is carried down rather than read from the tree shape.
+    """
     parts: list[str] = []
+    counter = 0
     for child in node.children:
         if isinstance(child, str):
+            # newlines between <li> tags are source formatting, not content
+            if node.tag in LIST_TAGS and not child.strip():
+                continue
             parts.append(child)
             continue
         if child.tag == "br":
             parts.append("\n")
             continue
-        prefix = "- " if child.tag == "li" else ""
-        body = markdown_text(child)
+        if child.tag in LIST_TAGS:
+            parts.append(
+                markdown_text(
+                    child,
+                    depth + 1,
+                    ordered=child.tag == "ol",
+                    checklist=_is_checklist(child) or (checklist and child.tag == "ul"),
+                )
+            )
+            parts.append("\n")
+            continue
+
+        prefix = ""
+        if child.tag == "li":
+            counter += 1
+            prefix = INDENT * max(depth - 1, 0) + _marker(child, counter, ordered, checklist)
+        body = markdown_text(child, depth, ordered, checklist)
         if child.tag in {"b", "strong"}:
             body = f"**{body.strip()}**"
         elif child.tag in {"em", "i"}:
             body = f"*{body.strip()}*"
         elif child.tag == "a" and child.attrs.get("href", "").startswith(("http://", "https://")):
             body = f"[{body.strip()}]({child.attrs['href']})"
+        elif child.tag in HEADING_TAGS:
+            body = f"{'#' * HEADING_TAGS[child.tag]} {body.strip()}"
+        elif child.tag == "li":
+            body = body.rstrip("\n")  # a trailing <br> inside an item is noise
         parts.append(prefix + body)
         if child.tag in BLOCK_TAGS:
             parts.append("\n")
     text = "".join(parts).replace("\r\n", "\n").replace("\r", "\n")
     return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def _is_checklist(node: Node) -> bool:
+    classes = node.attrs.get("class", "").lower()
+    return "checklist" in classes or any(
+        isinstance(child, Node) and child.tag == "li" and _checked(child) is not None
+        for child in node.children
+    )
+
+
+def _checked(item: Node) -> bool | None:
+    classes = item.attrs.get("class", "").lower().split()
+    if "checked" in classes:
+        return True
+    if "unchecked" in classes:
+        return False
+    return None
+
+
+def _marker(item: Node, position: int, ordered: bool, checklist: bool) -> str:
+    state = _checked(item)
+    if state is not None or checklist:
+        return f"- [{'x' if state else ' '}] "
+    return f"{position}. " if ordered else "- "
 
 
 def html_to_markdown(document: str) -> str:

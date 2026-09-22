@@ -64,10 +64,11 @@ def render_path(config: Config, *, project_id: str, title: str, created: date, p
     return "/".join(segments)
 
 
-def unique_directory(config: Config, relative: str) -> str:
-    """``relative`` or the first ``name (n)`` free inside ``content/``."""
+def unique_directory(config: Config, relative: str, root: Path | None = None) -> str:
+    """``relative`` or the first ``name (n)`` free inside ``root`` (``content/`` by default)."""
+    base = root if root is not None else config.content_root
     parent, _, name = relative.rpartition("/")
-    folder = config.content_root / parent if parent else config.content_root
+    folder = base / parent if parent else base
     taken = {entry.name for entry in folder.iterdir()} if folder.is_dir() else set()
     chosen = unique_filename(name, taken)
     return f"{parent}/{chosen}" if parent else chosen

@@ -133,9 +133,11 @@ class ItemState:
         return self.source_created_at or self.first_seen_at
 
 
-# A decision is recorded only once it is made; an item nobody has judged yet
-# simply has no assignment.
-ASSIGNMENT_DECISIONS: tuple[str, ...] = ("ignored", "promoted")
+# What the person decided about a collected item. A decision is recorded only
+# once it is made, so an item nobody has judged yet simply has no assignment.
+# See docs/state-model.md.
+ASSIGNMENT_DECISIONS: tuple[str, ...] = ("later", "reference", "used", "dropped")
+UNDECIDED_DECISIONS: tuple[str, ...] = ("later",)  # still needs a decision
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,8 +153,13 @@ class Assignment:
     def __post_init__(self) -> None:
         if self.decision not in ASSIGNMENT_DECISIONS:
             raise ValueError(f"decision must be one of {', '.join(ASSIGNMENT_DECISIONS)}")
-        if self.decision == "promoted" and not self.project_id:
-            raise ValueError("a promoted item must name the project it became")
+        if self.decision == "used" and not self.project_id:
+            raise ValueError("a used item must name the project it became material of")
+
+    @property
+    def is_dealt_with(self) -> bool:
+        """``later`` still needs a decision; the other three are settled."""
+        return self.decision not in UNDECIDED_DECISIONS
 
 
 DIGEST_LEVELS: tuple[str, ...] = ("day", "week", "month", "year")
@@ -161,6 +168,7 @@ DIGEST_STATES: tuple[str, ...] = ("open", "closed", "rolled", "archived")
 
 @dataclass(frozen=True, slots=True)
 class DigestState:
+    source: str
     level: str
     period_start: str  # ISO date, inclusive
     period_end: str  # ISO date, inclusive

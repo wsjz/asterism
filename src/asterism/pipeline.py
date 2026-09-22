@@ -8,7 +8,7 @@ from .models import ItemState, SyncResult
 from .rendering import content_hash, note_filename, note_relative_dir, render_markdown, unique_filename
 from .sources.base import Source
 from .state.base import StateBackend
-from .vault import NOTES_DIR, VaultPathError, atomic_write, validated_target
+from .vault import NOTES_DIR, ORIGIN_DIR, VaultPathError, atomic_write, validated_target
 
 
 class Pipeline:
@@ -20,7 +20,10 @@ class Pipeline:
             raise ValueError("source output_name must be a lowercase URL-style slug")
         # Output is always <vault>/notes/<source.output_name>/. The vault comes
         # from --vault; it is not implicitly the application source repository.
-        self.output_dir = (self.vault / NOTES_DIR / source.output_name).resolve(strict=False)
+        # New items are written under origin/; anything already recorded elsewhere in
+        # the source's tree is a previous layout and is moved, not rejected.
+        self.source_root = (self.vault / NOTES_DIR / source.output_name).resolve(strict=False)
+        self.output_dir = (self.source_root / ORIGIN_DIR).resolve(strict=False)
         self._taken: dict[str, set[str]] = {}
 
     def sync(self, *, dry_run: bool = False) -> SyncResult:
@@ -44,7 +47,7 @@ class Pipeline:
             relative_path = self._relative_path(item, previous)
             target = self._validated_target(relative_path)
             moved_from = (
-                self._validated_target(previous.relative_path)
+                self._validated_target(previous.relative_path, within=self.source_root)
                 if previous is not None and previous.relative_path != relative_path
                 else None
             )
@@ -66,6 +69,7 @@ class Pipeline:
                     atomic_write(target, rendered)
                     if moved_from is not None and moved_from != target and moved_from.is_file():
                         moved_from.unlink()  # the item moved in its source; follow it
+                        _prune_empty(moved_from.parent, self.source_root)
                 self.state.save(
                     ItemState(
                         source=item.source,
@@ -107,7 +111,7 @@ class Pipeline:
     def _relative_path(self, item, previous) -> str:
         """Mirror the source hierarchy; keep a recorded file name, or pick a unique one from the title."""
         directory = note_relative_dir(item)
-        base = f"{NOTES_DIR}/{self.source.output_name}"
+        base = f"{NOTES_DIR}/{self.source.output_name}/{ORIGIN_DIR}"
         folder = f"{base}/{directory}" if directory else base
         if previous is not None:
             filename = previous.relative_path.rsplit("/", 1)[-1]
@@ -126,8 +130,15 @@ class Pipeline:
         names.add(chosen)
         return chosen
 
-    def _validated_target(self, relative_path: str) -> Path:
+    def _validated_target(self, relative_path: str, within: Path | None = None) -> Path:
         try:
-            return validated_target(self.vault, relative_path, within=self.output_dir)
+            return validated_target(self.vault, relative_path, within=within or self.output_dir)
         except VaultPathError as error:
             raise ValueError(f"state contains an unsafe output path: {error}") from error
+
+
+def _prune_empty(directory: Path, root: Path) -> None:
+    """Remove folders a move emptied, never the source root itself."""
+    while directory != root and directory.is_dir() and not any(directory.iterdir()):
+        directory.rmdir()
+        directory = directory.parent

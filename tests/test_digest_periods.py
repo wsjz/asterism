@@ -2,7 +2,13 @@ from datetime import date
 import unittest
 
 from asterism.config import DigestConfig, DigestLevelConfig
-from asterism.digest.periods import Period, parse_label, pending_periods, period_containing
+from asterism.digest.periods import (
+    Period,
+    digest_relative_path,
+    parse_label,
+    pending_periods,
+    period_containing,
+)
 
 
 def cfg(week=7, month="last", year=12, week_on=True, month_on=True):
@@ -19,7 +25,7 @@ class PeriodTest(unittest.TestCase):
         period = period_containing("week", date(2026, 9, 21), cfg(week=3))
         self.assertEqual((date(2026, 9, 17), date(2026, 9, 23)), (period.start, period.end))
         self.assertEqual("2026-W39", period.label)
-        self.assertEqual("digest/weekly/2026/2026-W39.md", period.relative_path)
+        self.assertEqual("notes/flomo/digest/weekly/2026/2026-W39.md", digest_relative_path("flomo", period))
         # the day after a period end starts the next one
         following = period_containing("week", date(2026, 9, 24), cfg(week=3))
         self.assertEqual(date(2026, 9, 24), following.start)
@@ -41,7 +47,7 @@ class PeriodTest(unittest.TestCase):
         period = period_containing("year", date(2026, 9, 21), cfg(year=6))
         self.assertEqual((date(2026, 7, 1), date(2027, 6, 30)), (period.start, period.end))
         self.assertEqual("2027", period.label)
-        self.assertEqual("digest/yearly/2027.md", period.relative_path)
+        self.assertEqual("notes/flomo/digest/yearly/2027.md", digest_relative_path("flomo", period))
 
     def test_pending_periods_catch_up_and_skip_generated(self) -> None:
         pending = pending_periods("week", date(2026, 9, 1), date(2026, 9, 24), cfg(week=3), {"2026-09-03"})

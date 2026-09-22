@@ -47,21 +47,21 @@ class PipelineTest(unittest.TestCase):
             state = FileStateBackend(vault / "state" / "manifest.json")
             item = SourceItem("apple_notes", "1", "Desk", "Body", parent="Effeciency/Everyday/Month-2608/Week2")
             Pipeline(FakeSource([item]), state, vault).sync()
-            files = list((vault / "notes" / "apple-notes").rglob("*.md"))
+            files = list((vault / "notes" / "apple-notes" / "origin").rglob("*.md"))
             self.assertEqual(1, len(files))
             self.assertEqual(
                 ("Effeciency", "Everyday", "Month-2608", "Week2"),
-                files[0].relative_to(vault / "notes" / "apple-notes").parts[:-1],
+                files[0].relative_to(vault / "notes" / "apple-notes" / "origin").parts[:-1],
             )
             # moving the note in its source moves the file and keeps the file name
             moved = SourceItem("apple_notes", "1", "Desk", "Body", parent="Archive/2026")
             result = Pipeline(FakeSource([moved]), state, vault).sync()
             self.assertEqual(1, result.updated)
-            after = list((vault / "notes" / "apple-notes").rglob("*.md"))
+            after = list((vault / "notes" / "apple-notes" / "origin").rglob("*.md"))
             self.assertEqual(1, len(after))
-            self.assertEqual(("Archive", "2026"), after[0].relative_to(vault / "notes" / "apple-notes").parts[:-1])
+            self.assertEqual(("Archive", "2026"), after[0].relative_to(vault / "notes" / "apple-notes" / "origin").parts[:-1])
             self.assertEqual(files[0].name, after[0].name)
-            self.assertEqual("notes/apple-notes/Archive/2026/" + after[0].name, state.get("apple_notes", "1").relative_path)
+            self.assertEqual("notes/apple-notes/origin/Archive/2026/" + after[0].name, state.get("apple_notes", "1").relative_path)
 
     def test_same_titles_in_one_folder_get_numbered_and_names_stay_fixed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -73,9 +73,9 @@ class PipelineTest(unittest.TestCase):
                 SourceItem("apple_notes", "3", "Weekly", "c", parent="Other"),
             ]
             Pipeline(FakeSource(items), state, vault).sync()
-            everyday = sorted(p.name for p in (vault / "notes" / "apple-notes" / "Everyday").glob("*.md"))
+            everyday = sorted(p.name for p in (vault / "notes" / "apple-notes" / "origin" / "Everyday").glob("*.md"))
             self.assertEqual(["Weekly (2).md", "Weekly.md"], everyday)
-            self.assertEqual(["Weekly.md"], [p.name for p in (vault / "notes" / "apple-notes" / "Other").glob("*.md")])
+            self.assertEqual(["Weekly.md"], [p.name for p in (vault / "notes" / "apple-notes" / "origin" / "Other").glob("*.md")])
             # a later sync with a new same-titled note and a renamed old one keeps existing names
             later = [
                 SourceItem("apple_notes", "1", "Weekly renamed", "a", parent="Everyday"),
@@ -83,9 +83,9 @@ class PipelineTest(unittest.TestCase):
                 SourceItem("apple_notes", "4", "Weekly", "d", parent="Everyday"),
             ]
             Pipeline(FakeSource(later), state, vault).sync()
-            everyday = sorted(p.name for p in (vault / "notes" / "apple-notes" / "Everyday").glob("*.md"))
+            everyday = sorted(p.name for p in (vault / "notes" / "apple-notes" / "origin" / "Everyday").glob("*.md"))
             self.assertEqual(["Weekly (2).md", "Weekly (3).md", "Weekly.md"], everyday)
-            self.assertEqual("notes/apple-notes/Everyday/Weekly.md", state.get("apple_notes", "1").relative_path)
+            self.assertEqual("notes/apple-notes/origin/Everyday/Weekly.md", state.get("apple_notes", "1").relative_path)
 
     def test_unsafe_parent_segments_are_sanitized(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -93,9 +93,9 @@ class PipelineTest(unittest.TestCase):
             state = FileStateBackend(vault / "state" / "manifest.json")
             item = SourceItem("apple_notes", "1", "T", "B", parent="../..//etc/passwd/. /weird:name|x")
             Pipeline(FakeSource([item]), state, vault).sync()
-            files = list((vault / "notes" / "apple-notes").rglob("*.md"))
+            files = list((vault / "notes" / "apple-notes" / "origin").rglob("*.md"))
             self.assertEqual(1, len(files))
-            parts = files[0].relative_to(vault / "notes" / "apple-notes").parts[:-1]
+            parts = files[0].relative_to(vault / "notes" / "apple-notes" / "origin").parts[:-1]
             self.assertEqual(("etc", "passwd", "weird-name-x"), parts)
 
     def test_dry_run_does_not_write_files_or_state(self) -> None:
@@ -127,7 +127,7 @@ class PipelineTest(unittest.TestCase):
             result = Pipeline(FakeFlomoSource([item]), state, vault).sync()
 
             self.assertEqual(1, result.created)
-            files = list((vault / "notes" / "flomo").glob("*.md"))
+            files = list((vault / "notes" / "flomo" / "origin").glob("*.md"))
             self.assertEqual(1, len(files))
             rendered = files[0].read_text(encoding="utf-8")
             self.assertIn('tags: ["product/ideas", "draft"]', rendered)

@@ -12,7 +12,7 @@ id: 2026-042
 title: Desktop Status Screen
 pillar: vibe-coding
 type: tutorial
-status: approved
+status: making
 promise: Finish a status screen without front-end experience
 primary: blog
 platforms:
@@ -21,7 +21,7 @@ platforms:
 scheduled: 2026-10-12
 created: 2026-09-22
 sources:
-  - notes/flomo/Idea.md
+  - notes/flomo/origin/Idea.md
 published:
   blog: {at: 2026-10-05, url: 'https://example.com/a'}
 notion: https://www.notion.so/row
@@ -34,7 +34,7 @@ Notes to myself.
 class ProjectCardTest(unittest.TestCase):
     def test_reads_a_hand_written_card(self) -> None:
         project = ContentProject.from_markdown(CARD)
-        self.assertEqual(("2026-042", "approved", "vibe-coding"), (project.id, project.status, project.pillar))
+        self.assertEqual(("2026-042", "making", "vibe-coding"), (project.id, project.status, project.pillar))
         self.assertEqual(date(2026, 10, 12), project.scheduled)
         self.assertEqual(("blog", "zhihu"), project.platforms)
         self.assertEqual("Notes to myself.\n", project.body)

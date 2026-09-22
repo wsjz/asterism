@@ -37,8 +37,8 @@ class SyncCommandTest(unittest.TestCase):
             code, out, err = _run("sync", "--vault", str(vault), "--source", "flomo")
             self.assertEqual(0, code, err)
             self.assertIn("Sync [flomo]: 3 discovered, 3 new", out)
-            self.assertIn("Digest: day", out)
-            self.assertTrue((vault / "digest" / "daily").exists())
+            self.assertIn("Digest: flomo day", out)
+            self.assertTrue((vault / "notes" / "flomo" / "digest" / "daily").exists())
             code, out, _ = _run("sync", "--vault", str(vault), "--source", "flomo", "--no-digest")
             self.assertIn("3 unchanged", out)
             self.assertNotIn("Digest:", out)
@@ -50,7 +50,7 @@ class SyncCommandTest(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn("Sync [markdown]: skipped", err)
             self.assertIn("Sync [flomo]: 3 discovered", out)
-            self.assertTrue(list((vault / "notes" / "flomo").glob("*.md")))
+            self.assertTrue(list((vault / "notes" / "flomo" / "origin").glob("*.md")))
 
     def test_unknown_source_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
