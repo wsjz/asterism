@@ -47,6 +47,32 @@ NEXT_ACTION: dict[str, str] = {
 }
 
 
+def find_cards(root: Path) -> list[Path]:
+    """Every project card below ``root``, numbered or not.
+
+    Both discovery and id allocation read this, so a project can never be
+    invisible to one and visible to the other.
+    """
+    if not root.is_dir():
+        return []
+    found = set(root.rglob(PROJECT_FILE)) | set(root.rglob(f"[0-9][0-9]-{PROJECT_FILE}"))
+    return sorted(found)
+
+
+def card_in(directory: Path) -> Path:
+    """The project card in ``directory``, numbered or not.
+
+    Projects made before the names carried their production order keep the
+    plain ``project.md``; both are read, and neither is rewritten into the
+    other, because renaming would break the links already pointing at them.
+    """
+    plain = directory / PROJECT_FILE
+    if plain.is_file():
+        return plain
+    numbered = sorted(directory.glob(f"[0-9][0-9]-{PROJECT_FILE}"))
+    return numbered[0] if numbered else plain
+
+
 class ProjectError(ValueError):
     """A project card is missing, malformed, or holds an unusable value."""
 
@@ -144,7 +170,7 @@ class ContentProject:
 
     @classmethod
     def load(cls, directory: Path) -> ContentProject:
-        card = directory / PROJECT_FILE
+        card = card_in(directory)
         try:
             text = card.read_text(encoding="utf-8")
         except OSError as error:

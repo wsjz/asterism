@@ -15,7 +15,7 @@ from ..config import Config
 from ..vault import atomic_write, validated_target
 from .model import PROJECT_FILE, ContentProject, ProjectError
 from .paths import unique_directory
-from .stages import artifact_path
+from .stages import find_artifact
 
 
 def drop_project(config: Config, project: ContentProject) -> Path:
@@ -47,7 +47,7 @@ def _move(config: Config, project: ContentProject, status: str, source_root: Pat
     shutil.move(str(directory), str(target))
 
     moved = replace(project, status=status, directory=target)
-    atomic_write(target / artifact_path(config.project, PROJECT_FILE), moved.to_markdown())
+    atomic_write(find_artifact(config.project, target, PROJECT_FILE), moved.to_markdown())
     _prune_empty(directory.parent, source_root)
     return target
 

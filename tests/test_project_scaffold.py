@@ -7,7 +7,14 @@ import unittest
 
 from asterism.cli import main
 from asterism.config import CONFIG_NAME, initialize_vault, load_config
-from asterism.projects import ContentProject, ProjectError, create_project, next_id
+from asterism.projects import (
+    ContentProject,
+    ProjectError,
+    create_project,
+    find_artifact,
+    load_projects,
+    next_id,
+)
 
 
 PILLARS = (
@@ -39,7 +46,7 @@ class CreateProjectTest(unittest.TestCase):
             self.assertEqual(("vibe-coding", "tutorial", "blog"), (card.pillar, card.type, card.primary))
             self.assertEqual(("notes/flomo/origin/Idea.md",), card.sources)
             self.assertIn("# Desktop Status Screen", card.body)
-            brief = (project.directory / "brief.md").read_text(encoding="utf-8")
+            brief = (project.directory / "02-brief.md").read_text(encoding="utf-8")
             self.assertIn("## Core question", brief)
             self.assertIn("### [[notes/flomo/origin/Idea|Idea]]", brief)
             self.assertIn("> the note could not be read", brief)  # the note itself was never collected here
@@ -65,7 +72,7 @@ class CreateProjectTest(unittest.TestCase):
                 "# {{title}}\n\n## Problem with the current desk\n", encoding="utf-8"
             )
             project = create_project(config, title="Lighting", pillar="desk-setup", today=date(2026, 9, 22))
-            self.assertIn("## Problem with the current desk", (project.directory / "brief.md").read_text(encoding="utf-8"))
+            self.assertIn("## Problem with the current desk", (project.directory / "02-brief.md").read_text(encoding="utf-8"))
 
     def test_rejects_unknown_pillar_type_and_platform(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -91,6 +98,39 @@ class CreateProjectTest(unittest.TestCase):
             self.assertEqual("unsorted", loose.directory.parent.name)
 
 
+class NumberingTest(unittest.TestCase):
+    def test_a_project_folder_reads_as_the_order_it_is_made_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            project = create_project(load_config(vault), title="Desk Lighting", today=date(2026, 9, 22))
+            self.assertEqual(
+                ["01-project.md", "02-brief.md"],
+                sorted(path.name for path in project.directory.iterdir()),
+            )
+
+    def test_a_project_made_before_the_numbers_keeps_its_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            project = create_project(load_config(vault), title="Desk Lighting", today=date(2026, 9, 22))
+            for name, plain in (("01-project.md", "project.md"), ("02-brief.md", "brief.md")):
+                (project.directory / name).rename(project.directory / plain)
+
+            config = load_config(vault)
+            registry = load_projects(config)
+            self.assertEqual(["2026-001"], [item.id for item in registry.projects])
+
+            # a second project still gets the next id, not a colliding one
+            second = create_project(config, title="Cable routing", today=date(2026, 9, 22))
+            self.assertEqual("2026-002", second.id)
+
+            # and writing to the old project keeps writing to the old names
+            found = registry.projects[0]
+            self.assertEqual(
+                project.directory / "project.md",
+                find_artifact(config.project, found.directory, "project.md"),
+            )
+
+
 class NewCommandTest(unittest.TestCase):
     def test_creates_a_project_from_the_command_line(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -103,7 +143,7 @@ class NewCommandTest(unittest.TestCase):
                 ])
             self.assertEqual(0, code)
             self.assertIn("Created 2026-", out.getvalue())
-            cards = list((vault / "content").rglob("project.md"))
+            cards = list((vault / "content").rglob("01-project.md"))
             self.assertEqual(1, len(cards))
             self.assertEqual("making", ContentProject.load(cards[0].parent).status)
 

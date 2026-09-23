@@ -1,4 +1,12 @@
 """Decision gates: the few places where the pipeline waits for a person."""
+from .project import (
+    Answer,
+    pass_gate,
+    read_answer,
+    record_publication,
+    write_draft_gate,
+    write_publish_gate,
+)
 from .review import (
     SECTIONS,
     Line,
@@ -14,6 +22,7 @@ from .review import (
 )
 
 __all__ = [
+    "Answer",
     "Line",
     "SECTIONS",
     "Sheet",
@@ -22,7 +31,12 @@ __all__ = [
     "coverage",
     "days_since_last",
     "latest_sheet",
+    "pass_gate",
     "path_index",
+    "read_answer",
     "read_sheet",
+    "record_publication",
     "sheets",
+    "write_draft_gate",
+    "write_publish_gate",
 ]

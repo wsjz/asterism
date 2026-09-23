@@ -46,6 +46,39 @@ Design principles that hold across every phase:
   material while writing. Discovery happens in Obsidian, and planning is
   comfortable in Notion for those who add it.
 
+## The agent and the AI-native contract
+
+Asterism does not contain an agent. An agent — Claude Code, a script, or the
+optional `llm/` module of Phase 5 — sits outside and drives the pipeline
+through the CLI and the vault's files. This follows the first design
+principle: files are the only interface between stages, so whatever drives
+them is interchangeable and none of it is in the state machine.
+
+What the pipeline owes an agent, and what every command must therefore
+provide:
+
+- **A machine-readable form.** Every command that reports anything takes
+  `--json` and prints one JSON object with stable keys on stdout; the
+  human-readable form is unchanged and stays the default.
+- **Idempotence.** Running a command twice does what running it once did.
+  Where that is impossible the command says what it already did and changes
+  nothing.
+- **A preview.** Every command that writes takes `--dry-run` and prints what
+  it would write without touching the vault.
+- **A next step on failure.** An error names the command that would fix it.
+- **Gates that only a person passes.** An agent may gather, compose, adapt,
+  and write suggestions into any file. It may not move a project's status: the
+  three gate commands exist so that a person answers the gate's question, and
+  an agent invoking one on its own is a bug, not a feature. The switches that
+  advance state are never implied by another command.
+- **Suggestions live in files, marked.** Anything an agent wrote that a person
+  is meant to check is a normal part of the Markdown it belongs in, removable
+  by deleting it, and the file's front matter records who wrote it.
+
+The skill under `skills/asterism/` teaches an agent this flow and these
+boundaries. It is data for the agent, not part of the pipeline: deleting it
+changes nothing about how Asterism runs.
+
 ## Phase 1 — Collection
 
 **Status.** Implemented; see [the Phase 1 plan](phase-1.md). The remaining
@@ -158,7 +191,7 @@ transcripts, screenshots) are also collection, but they only matter once
 content projects exist to attach them to. They arrive in Phase 3 through the
 same adapter contract.
 
-## Phase 2 — Content projects and the first gate (current)
+## Phase 2 — Content projects, sorting, and confirming a topic (current)
 
 **Status.** Steps 1 to 5 of [the Phase 2 plan](phase-2.md) are implemented:
 project cards, scaffolding, `new`, `status`, `week`, the index and Bases
@@ -252,11 +285,11 @@ sources/notes/ + sources/worklog/ (git · coding sessions · screenshots) ──
                                                                                                                 │
                                                     compose/skeleton ──► draft.md ◄── human writes prose
                                                                              │
-                                                    compose/checks (coverage · citations · images) ──► gate 2  review/<ID>-draft.md
+                                                    compose/checks (coverage · citations · images) ──► gate 2  content/<project>/check.md
                                                                              │
                                                     compose/adapt/<platform> (rules in vault/platforms/*.md) ──► exports/*.md + package
                                                                              │
-                                                    gate 3  review/<ID>-publish.md ──► deliver/blog_git ──► blog repository
+                                                    gate 3  content/<project>/release.md ──► deliver/blog_git ──► blog repository
                                                                                        other platforms ──► human pastes, link recorded
 new state table: deliveries
 ```
@@ -464,14 +497,14 @@ Phase 1   <vault>/asterism.yaml · state/ · logs/ · .gitignore
           <vault>/notes/<source>/origin/<the source's own hierarchy>/<title>.md
           <vault>/notes/<source>/digest/{daily,weekly,monthly,yearly}/<year>/<label>.md
           <vault>/archive/notes/… or <archive.root>/notes/… for rolled-up lower levels when archiving is on
-Phase 2 + <vault>/review/<date>.md          the review sheet, gate 1
+Phase 2 + <vault>/review/<date>.md          the sorting sheet; gate 1 is the project card
           <vault>/content/INDEX.md · <vault>/content/projects.base
           <vault>/trash/<year>/<project>/   projects set aside
           <vault>/content/<year>/<date>-<title>/{project,brief}.md
           <vault>/templates/{project,brief-<pillar>}.md
 Phase 3 + <vault>/notes/worklog/{git,sessions,media}/
           <vault>/content/<year>/<date>-<slug>/{draft,assets}.md · exports/<platform>.md
-          <vault>/review/<ID>-{draft,publish}.md
+          <vault>/content/<year>/<date>-<slug>/{check,release}.md   gates 2 and 3
           <vault>/platforms/<platform>.md
           <media_root>/<year>/<date>-<slug>/<stage dirs from project.stages; default 03-originals/{photo,video,screen-recording}, 04-project, 05-export/<platform>, 06-cover>/
           <inbox>/ (one or more)

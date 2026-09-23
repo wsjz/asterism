@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from asterism.cli import _apply, _review, main
 from asterism.config import CONFIG_NAME, ConfigError, initialize_vault, load_config
 from asterism.digest import DigestBuilder
-from asterism.gates import build_sheet, coverage, read_sheet
+from asterism.gates import build_sheet, coverage, latest_sheet, read_sheet, sheets
 from asterism.models import SourceItem
 from asterism.pipeline import Pipeline
 from asterism.projects import load_projects
@@ -189,7 +189,7 @@ class ApplyTest(unittest.TestCase):
             config = load_config(vault)
             projects = load_projects(config).projects
             self.assertEqual(1, len(projects))
-            self.assertEqual(("making", "desk-setup"), (projects[0].status, projects[0].pillar))
+            self.assertEqual(("candidate", "desk-setup"), (projects[0].status, projects[0].pillar))
             self.assertEqual(("notes/flomo/origin/Desk lighting.md",), projects[0].sources)
             with FileStateBackend(config.state_dir / "manifest.json") as state:
                 self.assertEqual("used", state.get_assignment("flomo", "m1").decision)
@@ -302,7 +302,7 @@ class TopicTest(unittest.TestCase):
                     self.assertEqual("used", assignment.decision)
                     self.assertEqual(projects[0].id, assignment.project_id)
 
-            brief = (projects[0].directory / "brief.md").read_text(encoding="utf-8")
+            brief = (projects[0].directory / "02-brief.md").read_text(encoding="utf-8")
             self.assertIn("Body one", brief)  # the material travels into the brief
             self.assertIn("Body two", brief)
 
@@ -342,6 +342,33 @@ class TopicTest(unittest.TestCase):
             self.assertIn("### 1. flomo", text)
             _, lines = read_sheet(text)
             self.assertEqual({""}, {line.group for line in lines})
+
+
+class SheetDiscoveryTest(unittest.TestCase):
+    def test_only_files_that_say_they_are_sorting_sheets_are_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
+            _call(_review, load_config(vault), None, TODAY)
+            sorting = next(iter(sorted((vault / "review").glob("*.md"))))
+
+            # a name of the same shape, which a project id can produce
+            intruder = vault / "review" / "2026-ai-001-draft.md"
+            intruder.write_text(
+                '---\nschema: 1\nkind: "check"\nstate: "open"\n---\n\n- [ ] ok\n',
+                encoding="utf-8",
+            )
+            found = [path.name for path in sheets(load_config(vault))]
+            self.assertEqual([sorting.name], found)
+            self.assertEqual(sorting, latest_sheet(load_config(vault)))
+
+    def test_a_sheet_written_before_kind_existed_is_still_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            (vault / "review").mkdir(exist_ok=True)
+            old = vault / "review" / "2026-09-20-101010.md"
+            old.write_text('---\nschema: 1\nstate: "open"\n---\n', encoding="utf-8")
+            self.assertEqual([old], sheets(load_config(vault)))
 
 
 class RuleConfigTest(unittest.TestCase):

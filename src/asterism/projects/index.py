@@ -6,7 +6,7 @@ from ..links import link_to
 from ..vault import atomic_write
 from .model import PROJECT_FILE, ContentProject
 from .registry import Registry
-from .stages import artifact_path
+from .stages import find_artifact
 
 
 INDEX_FILE = "INDEX.md"
@@ -65,7 +65,7 @@ def render_index(config: Config, registry: Registry) -> str:
 def _title_link(config: Config, project: ContentProject, index_file) -> str:
     if project.directory is None:
         return project.title
-    card = project.directory / artifact_path(config.project, PROJECT_FILE)
+    card = find_artifact(config.project, project.directory, PROJECT_FILE)
     relative = card.relative_to(config.vault).as_posix()
     return link_to(config.links, config.vault, relative, project.title, from_file=index_file)
 

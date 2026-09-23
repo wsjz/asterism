@@ -306,6 +306,7 @@ def _keep_placements(path: Path, lines: list[Line]) -> list[Line]:
 def render_sheet(config: Config, sheet: Sheet, state: StateBackend) -> str:
     front = [
         ("schema", SCHEMA_VERSION),
+        ("kind", "sort"),
         ("review", sheet.stamp),
         ("state", "open"),
         ("covers", sheet.covers),
@@ -536,11 +537,26 @@ def path_index(state: StateBackend) -> dict[str, ItemState]:
 
 
 def sheets(config: Config, prefix: str = "") -> list[Path]:
-    """Every review sheet, oldest first; ``prefix`` selects a date or an exact name."""
+    """Every sorting sheet, oldest first; ``prefix`` selects a date or an exact name.
+
+    A file counts when its front matter says it is one. Matching the shape of
+    the name instead used to be enough, until a project id could produce a name
+    of the same shape and a project's own file was read as a round of sorting.
+    """
     root = config.vault / SHEET_DIR
     if not root.is_dir():
         return []
-    return sorted(path for path in root.glob("????-??-??*.md") if path.stem.startswith(prefix))
+    return sorted(
+        path for path in root.glob("*.md") if path.stem.startswith(prefix) and _is_sort_sheet(path)
+    )
+
+
+def _is_sort_sheet(path: Path) -> bool:
+    try:
+        fields, _body = parse_front_matter(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return fields.get("kind", "sort") == "sort"
 
 
 def latest_sheet(config: Config, prefix: str = "") -> Path | None:
@@ -556,7 +572,9 @@ def apply_sheet(
     """Record every placement and turn the ``used`` ones into content projects.
 
     A topic under ``used`` becomes one project holding all of its material; a
-    line on its own still becomes a project of its own.
+    line on its own still becomes a project of its own. Both arrive as
+    ``candidate``: material has been gathered, but which piece it becomes is
+    gate 1, answered with `asterism confirm`.
     """
     text = path.read_text(encoding="utf-8")
     fields, lines = read_sheet(text, path_index(state))
@@ -585,7 +603,7 @@ def apply_sheet(
             title=topic,
             pillar=next((pillar for pillar in pillars if pillar), None),
             sources=tuple(item.relative_path for _line, item in members),
-            status="making",
+            status="candidate",
             today=today,
         )
         created.append((members[0][0], project.id))
@@ -605,7 +623,7 @@ def apply_sheet(
                 title=item.title or line.source_id,
                 pillar=line.pillar or classify_item(config, item),
                 sources=(item.relative_path,),
-                status="making",
+                status="candidate",
                 today=today,
             )
             project_id = project.id

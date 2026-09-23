@@ -8,7 +8,7 @@ from string import Formatter
 
 from ..config import Config
 from ..rendering import clean_title_for_filename, unique_filename
-from .model import PROJECT_FILE, ContentProject, ProjectError
+from .model import ContentProject, ProjectError, find_cards
 
 
 def id_pattern(id_format: str, year: int) -> re.Pattern[str]:
@@ -40,7 +40,7 @@ def next_id(config: Config, *, today: date, pillar: str | None = None, type_: st
 
 def existing_ids(config: Config) -> list[str]:
     ids: list[str] = []
-    for card in sorted(config.content_root.rglob(PROJECT_FILE)):
+    for card in find_cards(config.content_root):
         try:
             ids.append(ContentProject.load(card.parent).id)
         except ProjectError:

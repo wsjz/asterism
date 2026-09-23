@@ -139,31 +139,65 @@ once, in the middle.
         |                                                 |
   state/assignments                              projects/scaffold
   later | reference | used | dropped             content/<year>/<date>-<title>/
-                                                   project.md   the card, YAML front matter
-                                                   brief.md     from the pillar's template,
-                                                                with the source quoted in it
+                                                   01-project.md  the card, YAML front matter
+                                                   02-brief.md    from the pillar's template,
+                                                                  with the source quoted in it
+                                                 (names carry the production order; set
+                                                  project.numbered: false to drop them)
                                                  content/INDEX.md, projects.base
                                                  trash/  projects set aside
 ```
 
-Commands: `review [--since]`, `apply`, `material`, `new`, `status`, `week`,
-`drop`, `restore`.
+Commands: `review [--since]`, `apply`, `confirm`, `gather`, `material`, `new`,
+`status`, `week`, `drop`, `restore`.
 
-### Phase 3 and later — planned
+### Phase 3 — the rest of the flow, `draft` to `publish`
 
-Phase 3 attaches work logs and media to a project and composes a draft
-skeleton from them; phase 4 turns the draft into platform versions and
-publishes; phase 5 brings metrics and comments back as new material; phase 6
-adds an optional language model over the deterministic artifacts. See
-[the roadmap](docs/roadmap.md) for the scope and the architecture at the end
-of each one.
+A confirmed project is carried to a recorded publication by commands alone.
 
 ```text
-phase 3   sources/worklog + compose/  -> content/<project>/draft.md, assets.md
-phase 4   compose/adapt + deliver/    -> content/<project>/exports/<platform>.md
-phase 5   feedback/ + scheduler/      -> content/<project>/review.md, new material
-phase 6   llm/                        -> the same artifacts, enhanced, off by default
+   content/<year>/<date>-<title>/
+     01-project.md  02-brief.md    gather  already-filed material, by path and window
+             |                             (an item's outcome never changes)
+        `asterism draft`
+             |
+     03-draft.md  the brief's headings, empty, the material listed under `## Material`
+             |                       <-- the person writes the prose
+        `asterism check`   -> 04-check.md            GATE 2: what the checks found
+             |                                        plus three questions to tick
+        `asterism accept`  -> making becomes ready
+             |
+        `asterism adapt`   -> 05-exports/<platform>.md  from platforms/<platform>.md rules
+             |                                        an edited export is never overwritten
+        `asterism release` -> 06-release.md          GATE 3: the exports and three questions
+             |
+        `asterism publish` -> ready becomes published, the record lands on the card
 ```
+
+Commands: `draft`, `check`, `accept`, `adapt`, `release`, `publish [--url
+platform=URL]`. Nothing is pushed anywhere: publishing records what went out.
+
+### Phase 4 and later — planned
+
+Phase 4 brings metrics and comments back as new material and adds the
+unattended `run` orchestrator; phase 5 adds an optional language model over the
+deterministic artifacts. See [the roadmap](docs/roadmap.md) for the scope and
+the architecture at the end of each one.
+
+```text
+phase 3+  sources/worklog             -> git commits and coding sessions as material
+phase 4   feedback/ + scheduler/      -> content/<project>/review.md, new material
+phase 5   llm/                        -> the same artifacts, enhanced, off by default
+```
+
+### Driving it with an agent
+
+Every command except `init` takes `--json` and prints one object with stable
+keys, so an agent can read a result instead of a paragraph. `skills/asterism/SKILL.md`
+teaches one the flow and, more importantly, its boundary: an agent sorts,
+groups, gathers, drafts and adapts, and stops at each of the three gates for
+the person to answer. Copy it into `~/.claude/skills/` to use it with Claude
+Code.
 
 ## Requirements
 

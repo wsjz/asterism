@@ -231,7 +231,7 @@ DEFAULT_STAGES: tuple[Stage, ...] = (
     Stage("project", media=("editing",)),
     Stage("export", media_per_platform=True),
     Stage("cover", media=("cover",)),
-    Stage("archive", artifacts=("draft.md", "exports/", "review.md")),
+    Stage("archive", artifacts=("draft.md", "check.md", "release.md", "exports/", "review.md")),
 )
 DEFAULT_BINDINGS: dict[str, str] = {
     "unassigned_media": "originals",

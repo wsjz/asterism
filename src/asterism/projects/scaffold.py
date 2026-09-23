@@ -13,7 +13,7 @@ from ..rendering import parse_front_matter
 from ..vault import atomic_write, validated_target
 from .model import BRIEF_FILE, PROJECT_FILE, ContentProject, ProjectError
 from .paths import next_id, render_path, unique_directory
-from .stages import artifact_path
+from .stages import find_artifact
 
 
 PROJECT_TEMPLATE = "project.md"
@@ -92,8 +92,8 @@ def create_project(
     brief_text = render_template(
         ensure_template(config, brief_template_name(config, pillar)).read_text(encoding="utf-8"), values
     )
-    atomic_write(directory / artifact_path(config.project, PROJECT_FILE), project.with_body(card_body).to_markdown())
-    atomic_write(directory / artifact_path(config.project, BRIEF_FILE), brief_text.rstrip() + "\n")
+    atomic_write(find_artifact(config.project, directory, PROJECT_FILE), project.with_body(card_body).to_markdown())
+    atomic_write(find_artifact(config.project, directory, BRIEF_FILE), brief_text.rstrip() + "\n")
     return replace(project, body=card_body)
 
 
@@ -108,6 +108,11 @@ def _validate(config: Config, pillar: str | None, type_: str | None, platforms: 
         raise ProjectError(
             f"unknown platforms: {', '.join(unknown)}; configured platforms are {', '.join(config.content.platforms)}"
         )
+
+
+def quote_sources(config: Config, sources: tuple[str, ...], card: Path) -> str:
+    """The material section of a brief: every source quoted, in the given order."""
+    return "\n\n".join(_quote_source(config, source, card) for source in sources)
 
 
 def _quote_source(config: Config, relative: str, card: Path) -> str:
@@ -133,9 +138,9 @@ def _quote_source(config: Config, relative: str, card: Path) -> str:
 
 
 def _values(config: Config, project: ContentProject, directory: Path) -> dict[str, str]:
-    card = directory / artifact_path(config.project, PROJECT_FILE)
-    brief_relative = (directory / artifact_path(config.project, BRIEF_FILE)).relative_to(config.vault).as_posix()
-    quoted = [_quote_source(config, source, card) for source in project.sources]
+    card = find_artifact(config.project, directory, PROJECT_FILE)
+    brief_relative = (find_artifact(config.project, directory, BRIEF_FILE)).relative_to(config.vault).as_posix()
+    quoted = quote_sources(config, project.sources, card)
     return {
         "id": project.id,
         "title": project.title,
@@ -146,5 +151,5 @@ def _values(config: Config, project: ContentProject, directory: Path) -> dict[st
         "promise": project.promise or "",
         "platforms": ", ".join(project.platforms),
         "brief_link": link_to(config.links, config.vault, brief_relative, "Brief", from_file=card),
-        "sources": "\n\n".join(quoted),
+        "sources": quoted,
     }

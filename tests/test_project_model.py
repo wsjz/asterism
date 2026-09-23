@@ -100,7 +100,10 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertIn("blog", config.content.platforms)
         self.assertEqual("{year}/{date}-{title}", config.project.path)
         self.assertEqual("01-brief", stage_directory(config.project, config.project.stages[0]))
-        self.assertEqual("project.md", artifact_path(config.project, "project.md"))
+        # flat keeps the files together and numbers them in production order
+        self.assertEqual("01-project.md", artifact_path(config.project, "project.md"))
+        self.assertEqual("03-draft.md", artifact_path(config.project, "draft.md"))
+        self.assertEqual("05-exports/blog.md", artifact_path(config.project, "exports/blog.md"))
 
     def test_staged_layout_and_unnumbered_stages(self) -> None:
         config = self._load(

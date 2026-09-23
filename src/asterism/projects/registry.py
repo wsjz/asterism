@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..config import Config
-from .model import PROJECT_FILE, ContentProject, ProjectError
+from .model import ContentProject, ProjectError, find_cards
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,9 +53,7 @@ def load_projects(config: Config, *, include_dropped: bool = False) -> Registry:
     problems: list[str] = []
     roots = [config.content_root] + ([config.trash_root] if include_dropped else [])
     for root in roots:
-        if not root.is_dir():
-            continue
-        for card in sorted(root.rglob(PROJECT_FILE)):
+        for card in find_cards(root):
             try:
                 projects.append(ContentProject.load(card.parent))
             except ProjectError as error:

@@ -1,6 +1,6 @@
-# Phase 2 plan — Content projects and the first gate
+# Phase 2 plan — Content projects, sorting, and confirming a topic
 
-Scope and "done" criteria come from [the roadmap](roadmap.md#phase-2--content-projects-and-the-first-gate).
+Scope and "done" criteria come from [the roadmap](roadmap.md#phase-2--content-projects-sorting-and-confirming-a-topic-current).
 This document turns them into ordered, PR-sized steps. Each step keeps the
 test suite green, touches only the files listed, and is usable on its own.
 

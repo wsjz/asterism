@@ -37,13 +37,13 @@ class RegistryTest(unittest.TestCase):
             newer = create_project(config, title="Newer", pillar="vibe-coding", today=date(2026, 9, 22))
             broken = config.content_root / "2026" / "broken"
             broken.mkdir(parents=True)
-            (broken / "project.md").write_text("not a card\n", encoding="utf-8")
+            (broken / "01-project.md").write_text("not a card\n", encoding="utf-8")
 
             registry = load_projects(config)
 
             self.assertEqual(["Newer", "Older"], [p.title for p in registry.projects])
             self.assertEqual(1, len(registry.problems))
-            self.assertIn("broken/project.md", registry.problems[0])
+            self.assertIn("broken/01-project.md", registry.problems[0])
             self.assertEqual((newer,), registry.filtered(pillar="vibe-coding").projects[:1])
             self.assertEqual(2, len(registry.in_flight()))
 
@@ -63,7 +63,7 @@ class ViewsTest(unittest.TestCase):
             )
             card = ContentProject.load(project.directory)
             published = card.to_markdown().replace("published: {}", "published:\n  blog: {at: 2026-09-23, url: 'https://x.y/a'}")
-            (project.directory / "project.md").write_text(published, encoding="utf-8")
+            (project.directory / "01-project.md").write_text(published, encoding="utf-8")
 
             changed = write_views(config, load_projects(config))
             self.assertEqual([INDEX_FILE, BASE_FILE], changed)
@@ -71,7 +71,7 @@ class ViewsTest(unittest.TestCase):
             self.assertIn("| 2026-09-22 |", index)
             self.assertIn("desk-setup", index)
             self.assertIn("blog +, zhihu -", index)
-            self.assertIn("[[content/2026/2026-09-22-Desk Lighting/project|Desk Lighting]]", index)
+            self.assertIn("[[content/2026/2026-09-22-Desk Lighting/01-project|Desk Lighting]]", index)
 
             base = config.content_root / BASE_FILE
             base.write_text("views: []\n", encoding="utf-8")
@@ -109,7 +109,7 @@ class StatusAndWeekTest(unittest.TestCase):
             create_project(config, title="Fine", today=date(2026, 9, 22))
             broken = config.content_root / "2026" / "broken"
             broken.mkdir(parents=True)
-            (broken / "project.md").write_text("---\nid: 1\ntitle: T\nstatus: cooking\n---\n", encoding="utf-8")
+            (broken / "01-project.md").write_text("---\nid: 1\ntitle: T\nstatus: cooking\n---\n", encoding="utf-8")
             code, out, err = _run("status", "--vault", str(config.vault))
             self.assertEqual(1, code)
             self.assertIn("Fine", out)
@@ -126,7 +126,7 @@ class StatusAndWeekTest(unittest.TestCase):
             self.assertIn("trash/", out)
             self.assertFalse(project.directory.exists())
             moved = config.trash_root / relative
-            self.assertTrue((moved / "brief.md").is_file())
+            self.assertTrue((moved / "02-brief.md").is_file())
             self.assertEqual("dropped", ContentProject.load(moved).status)
             self.assertFalse((config.content_root / "2026").exists())  # the empty year folder is pruned
 
@@ -138,7 +138,7 @@ class StatusAndWeekTest(unittest.TestCase):
             code, out, err = _run("restore", project.id, "--vault", str(config.vault))
             self.assertEqual(0, code, err)
             back = config.content_root / relative
-            self.assertTrue((back / "brief.md").is_file())
+            self.assertTrue((back / "02-brief.md").is_file())
             self.assertEqual("candidate", ContentProject.load(back).status)
             self.assertFalse(config.trash_root.joinpath(relative).exists())
 

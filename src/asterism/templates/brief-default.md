@@ -1,5 +1,12 @@
 # {{title}}
 
+## Candidate angles
+
+_Pick one with `asterism confirm {{id}} --angle N`, or write your own title and
+promise and confirm with those. Nothing downstream runs until one is chosen._
+
+1. **{{title}}** —
+
 ## Core question
 
 ## Audience
