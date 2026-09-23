@@ -134,6 +134,40 @@ class ConfirmTest(unittest.TestCase):
             self.assertIn("offers 1", str(raised.exception))
 
 
+class SetTest(unittest.TestCase):
+    def test_the_cards_fields_can_be_changed_without_opening_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            project = _candidate(vault)
+            code, out, _ = _run(
+                "set", project.id, "--vault", str(vault),
+                "--platform", "blog", "--platform", "zhihu", "--promise", "see clearly",
+            )
+            self.assertEqual(0, code)
+            card = load_projects(load_config(vault)).projects[0]
+            self.assertEqual(("blog", "zhihu"), card.platforms)
+            self.assertEqual("blog", card.primary)  # the first one leads
+            self.assertEqual("see clearly", card.promise)
+            self.assertEqual("candidate", card.status)  # status only moves through gates
+
+    def test_what_is_not_given_is_left_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            project = _candidate(vault)
+            _run("set", project.id, "--vault", str(vault), "--promise", "see clearly")
+            _run("set", project.id, "--vault", str(vault), "--type", "tutorial")
+            card = load_projects(load_config(vault)).projects[0]
+            self.assertEqual(("see clearly", "tutorial"), (card.promise, card.type))
+
+    def test_an_unknown_platform_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            project = _candidate(vault)
+            code, _out, err = _run("set", project.id, "--vault", str(vault), "--platform", "myspace")
+            self.assertEqual(1, code)
+            self.assertIn("unknown platforms", err)
+
+
 class ConfirmCommandTest(unittest.TestCase):
     def test_without_a_choice_it_lists_the_angles_and_stops(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -3,13 +3,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
+import shutil
+import subprocess
 from string import Formatter
 import tomllib
 from typing import Any, Mapping
 
 import yaml
 
-from .vault import VaultPathError, atomic_write
+from .vault import (
+    LEGACY_SETTINGS_DIRS,
+    LEGACY_PICKS_DIR,
+    LEGACY_PROJECTS_DIR,
+    LEGACY_STATE_DIR,
+    MACHINE_DIR,
+    PICKS_DIR,
+    PROJECTS_DIR,
+    SETTINGS_DIR,
+    STATE_DIR,
+    VaultPathError,
+    atomic_write,
+)
 from .vault import normalize_vault as _normalize_vault
 
 
@@ -146,7 +160,7 @@ MATERIAL_DECISIONS: tuple[str, ...] = ("later", "reference", "used", "dropped")
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewRule:
+class PickRule:
     """What a source's items are suggested for, and whether to ask at all."""
 
     source: str  # the source's directory name, as under notes/
@@ -163,11 +177,11 @@ class ReviewRule:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewConfig:
+class PicksConfig:
     every: int = 7  # days; only used to say how long it has been
-    rules: tuple[ReviewRule, ...] = ()
+    rules: tuple[PickRule, ...] = ()
 
-    def rule_for(self, source_dir: str, source_name: str, parent: str) -> ReviewRule | None:
+    def rule_for(self, source_dir: str, source_name: str, parent: str) -> PickRule | None:
         return next(
             (rule for rule in self.rules if rule.matches(source_dir, source_name, parent)), None
         )
@@ -277,7 +291,7 @@ class Config:
     state_dir_override: Path | None = None
     opencli: OpencliConfig = OpencliConfig()
     content: ContentConfig = ContentConfig()
-    review: ReviewConfig = ReviewConfig()
+    picks: PicksConfig = PicksConfig()
     project: ProjectConfig = ProjectConfig()
 
     @property
@@ -285,8 +299,29 @@ class Config:
         return self.archive.root if self.archive.root is not None else self.vault / "archive"
 
     @property
-    def content_root(self) -> Path:
-        return self.vault / "content"
+    def projects_root(self) -> Path:
+        """Where each piece lives for its whole life, from candidate to published."""
+        return self._staged(PROJECTS_DIR, LEGACY_PROJECTS_DIR)
+
+    @property
+    def picks_root(self) -> Path:
+        """Where each round of choosing what to make is recorded."""
+        return self._staged(PICKS_DIR, LEGACY_PICKS_DIR)
+
+    def _staged(self, name: str, legacy: str) -> Path:
+        """``name``, or the older name when that is what this vault already uses."""
+        return self._existing(self.vault / name, self.vault / legacy)
+
+    @staticmethod
+    def _existing(preferred: Path, *older: Path) -> Path:
+        """``preferred``, unless a vault already keeps this somewhere it used to be.
+
+        Every directory Asterism has renamed resolves this way, so a vault made
+        at any point keeps working and nobody has to move a folder to upgrade.
+        """
+        if preferred.is_dir():
+            return preferred
+        return next((path for path in older if path.is_dir()), preferred)
 
     @property
     def trash_root(self) -> Path:
@@ -295,7 +330,26 @@ class Config:
 
     @property
     def templates_root(self) -> Path:
-        return self.vault / "templates"
+        """Where the brief and card templates live, with the rest of the configuration."""
+        return self._configured("templates")
+
+    @property
+    def platforms_root(self) -> Path:
+        """Where each platform's rewriting rules live."""
+        return self._configured("platforms")
+
+    def _configured(self, name: str) -> Path:
+        """``settings/<name>``, or wherever a vault already keeps it.
+
+        These are settings the person writes as Markdown, so they sit together
+        and stay visible: a template is edited in Obsidian like any other note,
+        which a hidden directory would prevent.
+        """
+        return self._existing(
+            self.vault / SETTINGS_DIR / name,
+            *(self.vault / older / name for older in LEGACY_SETTINGS_DIRS),
+            self.vault / name,
+        )
 
     @property
     def notes_root(self) -> Path:
@@ -310,7 +364,18 @@ class Config:
 
     @property
     def state_dir(self) -> Path:
-        return self.state_dir_override if self.state_dir_override is not None else self.vault / "state"
+        """Where bookkeeping lives: ``.asterism/state``, or where it already is.
+
+        A dot keeps it out of Obsidian's file tree, which should only show what
+        a person opens. A vault created before this keeps its ``state/`` so no
+        one has to move a manifest to keep working.
+        """
+        if self.state_dir_override is not None:
+            return self.state_dir_override
+        legacy = self.vault / LEGACY_STATE_DIR
+        if legacy.is_dir() and not (self.vault / STATE_DIR).is_dir():
+            return legacy
+        return self.vault / STATE_DIR
 
 
 def normalize_vault(path: Path) -> Path:
@@ -374,7 +439,7 @@ def initialize_vault(vault: Path, state_backend: str) -> Config:
     if not root.is_dir():
         raise ConfigError(f"vault is not a directory: {root}")
 
-    for relative in ("notes", "state", "logs"):
+    for relative in ("notes", STATE_DIR):
         destination = (root / relative).resolve(strict=False)
         if not destination.is_relative_to(root):
             raise ConfigError("refusing to create a path outside the vault")
@@ -388,12 +453,75 @@ def initialize_vault(vault: Path, state_backend: str) -> Config:
     ignore_path = root / ".gitignore"
     if not ignore_path.exists():
         ignore_path.write_text(
-            "state/*\n!state/.gitkeep\nlogs/*\n!logs/.gitkeep\n*.tmp\n",
+            f"{MACHINE_DIR}/\n*.tmp\n",
             encoding="utf-8",
         )
-    for keep_path in (root / "state" / ".gitkeep", root / "logs" / ".gitkeep"):
-        keep_path.touch(exist_ok=True)
+    readme = root / "README.md"
+    if not readme.exists():
+        readme.write_text(VAULT_README, encoding="utf-8")
+    _start_repository(root)
     return Config(root, state_backend, None, None, (), (), (), False)
+
+
+VAULT_README = """# This vault
+
+```text
+sources ──► notes/ ──► picks/ ──► projects/
+```
+
+| | what is in it | who writes it |
+|---|---|---|
+| `notes/` | everything collected, mirrored one file per item, plus digests | `asterism sync`; never edit by hand |
+| `picks/` | one sheet per round: what has no outcome yet, threads first | `asterism propose` writes it, you move the lines |
+| `projects/` | one folder per piece, `01-project` through `06-release` in the order they are made | the commands and you |
+| `settings/` | brief templates and each platform's rewriting rules | you |
+| `asterism.yaml` | pillars, types, platforms, how often you choose | you |
+
+Obsidian hides file types it cannot open, so `asterism.yaml` will not appear in
+the file explorer until you turn on **Settings → Files and links → Detect all
+file extensions**. It is there either way; any text editor opens it.
+
+A round looks like this:
+
+```bash
+asterism sync      # collect
+asterism propose   # write picks/<date>.md
+#                    move each line under used / later / reference / dropped;
+#                    under used, gather the lines of one piece beneath a `### topic`
+asterism apply     # each topic becomes a project, as a candidate
+asterism confirm <id> --angle N    # gate 1: decide what it will be
+asterism draft <id>                # then write
+asterism check <id> / accept <id>  # gate 2
+asterism adapt <id>                # platform versions
+asterism release <id> / publish <id>   # gate 3
+```
+
+Nothing here is ever deleted or pushed anywhere. `asterism status` says what
+exists, `asterism week` says what is waiting for you.
+"""
+
+
+def _start_repository(root: Path) -> bool:
+    """Make the vault a Git repository, unless it is already inside one.
+
+    The vault ships a ``.gitignore`` and the pipeline offers snapshots, so a
+    vault that is not a repository has the shape of version control and none of
+    it — and the writing, which is the part worth keeping, is what goes missing.
+    Nothing is ever pushed, so this only ever creates a local history.
+    """
+    if shutil.which("git") is None:
+        return False
+    inside = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+    if inside.returncode == 0 and inside.stdout.strip() == "true":
+        return False  # someone else already versions this directory
+    started = subprocess.run(
+        ["git", "-C", str(root), "init", "-q"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+    return started.returncode == 0
 
 
 def _default_config_text(state_backend: str) -> str:
@@ -440,9 +568,9 @@ def _default_config_text(state_backend: str) -> str:
         "  #       args: { limit: 200 }\n"
         "  #       map: { id: id, url: url, content: [text], created_at: created_at, author: author }\n"
         "\n"
-        "# Review: how often you sort collected material, and what each source\n"
+        "# Picks: how often you choose what to make, and what each source\n"
         "# is suggested for. A rule with auto: true is applied without listing.\n"
-        "# review:\n"
+        "# picks:\n"
         "#   every: 3\n"
         "#   rules:\n"
         "#     - { source: apple-notes, parent: Daily Log, default: dropped, auto: true }\n"
@@ -543,7 +671,7 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         raise ConfigError("links must be 'wikilink' or 'markdown'")
 
     content = _content_config(_table(raw, "content"))
-    review = _review_config(_table(raw, "review"))
+    picks = _picks_config(_table(raw, "picks") or _table(raw, "review"))
     project = _project_config(_table(raw, "project"), content)
 
     return Config(
@@ -564,22 +692,22 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         state_dir_override=state_dir,
         opencli=opencli,
         content=content,
-        review=review,
+        picks=picks,
         project=project,
     )
 
 
-def _review_config(table: Mapping[str, Any]) -> ReviewConfig:
-    defaults = ReviewConfig()
+def _picks_config(table: Mapping[str, Any]) -> PicksConfig:
+    defaults = PicksConfig()
     every = table.get("every", defaults.every)
     if not isinstance(every, int) or isinstance(every, bool) or not 1 <= every <= 365:
-        raise ConfigError("review.every must be a number of days between 1 and 365")
+        raise ConfigError("picks.every must be a number of days between 1 and 365")
     raw_rules = table.get("rules", [])
     if not isinstance(raw_rules, list) or len(raw_rules) > 100:
-        raise ConfigError("review.rules must be a list")
-    rules: list[ReviewRule] = []
+        raise ConfigError("picks.rules must be a list")
+    rules: list[PickRule] = []
     for index, entry in enumerate(raw_rules):
-        label = f"review.rules[{index}]"
+        label = f"picks.rules[{index}]"
         if not isinstance(entry, dict):
             raise ConfigError(f"{label} must be a mapping")
         source = entry.get("source")
@@ -599,14 +727,14 @@ def _review_config(table: Mapping[str, Any]) -> ReviewConfig:
         if parent is not None:
             _require_relative(parent, f"{label}.parent")
         rules.append(
-            ReviewRule(
+            PickRule(
                 source=source.strip(),
                 default=default,
                 parent=parent,
                 auto=auto,
             )
         )
-    return ReviewConfig(every=every, rules=tuple(rules))
+    return PicksConfig(every=every, rules=tuple(rules))
 
 
 def _content_config(table: Mapping[str, Any]) -> ContentConfig:

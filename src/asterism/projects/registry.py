@@ -9,25 +9,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..config import Config
-from .model import ContentProject, ProjectError, find_cards
+from .model import Project, ProjectError, find_cards
 
 
 @dataclass(frozen=True, slots=True)
 class Registry:
-    projects: tuple[ContentProject, ...] = ()
+    projects: tuple[Project, ...] = ()
     problems: tuple[str, ...] = ()  # cards that could not be read, reported not raised
 
-    def by_status(self, status: str) -> tuple[ContentProject, ...]:
+    def by_status(self, status: str) -> tuple[Project, ...]:
         return tuple(project for project in self.projects if project.status == status)
 
-    def in_flight(self) -> tuple[ContentProject, ...]:
+    def in_flight(self) -> tuple[Project, ...]:
         return tuple(
             project
             for project in self.projects
             if not project.is_published and not project.is_dropped
         )
 
-    def find(self, project_id: str) -> ContentProject | None:
+    def find(self, project_id: str) -> Project | None:
         return next((project for project in self.projects if project.id == project_id), None)
 
     def filtered(
@@ -49,18 +49,18 @@ def load_projects(config: Config, *, include_dropped: bool = False) -> Registry:
     Only live work under ``content/`` is read by default. Dropped projects
     wait under ``trash/`` and are included on request.
     """
-    projects: list[ContentProject] = []
+    projects: list[Project] = []
     problems: list[str] = []
-    roots = [config.content_root] + ([config.trash_root] if include_dropped else [])
+    roots = [config.projects_root] + ([config.trash_root] if include_dropped else [])
     for root in roots:
         for card in find_cards(root):
             try:
-                projects.append(ContentProject.load(card.parent))
+                projects.append(Project.load(card.parent))
             except ProjectError as error:
                 problems.append(f"{card.relative_to(config.vault).as_posix()}: {error}")
     projects.sort(key=_sort_key, reverse=True)
     return Registry(tuple(projects), tuple(problems))
 
 
-def _sort_key(project: ContentProject) -> tuple[str, str]:
+def _sort_key(project: Project) -> tuple[str, str]:
     return (project.created.isoformat() if project.created else "", project.id)

@@ -11,7 +11,7 @@ from ..config import Config
 from ..links import link_to
 from ..rendering import parse_front_matter
 from ..vault import atomic_write, validated_target
-from .model import BRIEF_FILE, PROJECT_FILE, ContentProject, ProjectError
+from .model import BRIEF_FILE, PROJECT_FILE, Project, ProjectError
 from .paths import next_id, render_path, unique_directory
 from .stages import find_artifact
 
@@ -43,10 +43,19 @@ def render_template(text: str, values: dict[str, str]) -> str:
     return _PLACEHOLDER.sub(lambda match: values.get(match.group(1), match.group(0)), text)
 
 
-def brief_template_name(config: Config, pillar: str | None) -> str:
+def brief_template_name(config: Config, pillar: str | None, type_: str | None = None) -> str:
+    """The brief template for this piece: the most specific one that exists.
+
+    A pillar says what the piece is about, a type says what shape it has, and
+    the shape decides the skeleton — a report and a tutorial need different
+    sections whatever their subject. So a pillar's configured template wins,
+    then the type's, then the pillar's by name, then the default.
+    """
     configured = config.content.pillar(pillar)
     if configured is not None and configured.brief:
         return Path(configured.brief).name
+    if type_:
+        return f"brief-{type_}.md"
     return f"brief-{pillar}.md" if pillar else DEFAULT_BRIEF_TEMPLATE
 
 
@@ -61,7 +70,7 @@ def create_project(
     status: str = "candidate",
     today: date | None = None,
     promise: str | None = None,
-) -> ContentProject:
+) -> Project:
     """Create the project folder with its card and brief, and return the card."""
     if not title.strip():
         raise ProjectError("a project needs a title")
@@ -71,9 +80,9 @@ def create_project(
     relative = unique_directory(
         config, render_path(config, project_id=project_id, title=title.strip(), created=created, pillar=pillar, type_=type_)
     )
-    directory = validated_target(config.content_root, relative)
+    directory = validated_target(config.projects_root, relative)
 
-    project = ContentProject(
+    project = Project(
         id=project_id,
         title=title.strip(),
         status=status,
@@ -90,7 +99,7 @@ def create_project(
 
     card_body = render_template(ensure_template(config, PROJECT_TEMPLATE).read_text(encoding="utf-8"), values)
     brief_text = render_template(
-        ensure_template(config, brief_template_name(config, pillar)).read_text(encoding="utf-8"), values
+        ensure_template(config, brief_template_name(config, pillar, type_)).read_text(encoding="utf-8"), values
     )
     atomic_write(find_artifact(config.project, directory, PROJECT_FILE), project.with_body(card_body).to_markdown())
     atomic_write(find_artifact(config.project, directory, BRIEF_FILE), brief_text.rstrip() + "\n")
@@ -137,7 +146,7 @@ def _quote_source(config: Config, relative: str, card: Path) -> str:
     return f"{heading}\n\n{meta}\n\n{quote}" if meta else f"{heading}\n\n{quote}"
 
 
-def _values(config: Config, project: ContentProject, directory: Path) -> dict[str, str]:
+def _values(config: Config, project: Project, directory: Path) -> dict[str, str]:
     card = find_artifact(config.project, directory, PROJECT_FILE)
     brief_relative = (find_artifact(config.project, directory, BRIEF_FILE)).relative_to(config.vault).as_posix()
     quoted = quote_sources(config, project.sources, card)

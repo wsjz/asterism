@@ -27,6 +27,7 @@ from .projects import (
     angles,
     confirm_project,
     create_project,
+    set_fields,
     drop_project,
     gather_into,
     load_projects,
@@ -35,8 +36,10 @@ from .projects import (
     write_views,
 )
 from .compose import adapt_project, check_draft, compose_draft, draft_path
+from .projects.index import BASE_FILE, dead_filter
 from .projects.model import NEXT_ACTION
 from .report import emit, emit_error
+from .search import SCOPES, search_notes
 from .sources import Source, SourceError
 from .sources.registry import OPENCLI_PREFIX, SOURCE_NAMES, build_source, configured_sources, is_known_source
 from .sources.opencli import run_opencli
@@ -188,6 +191,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="where it went live; may repeat",
     )
 
+    find_parser = subparsers.add_parser(
+        "find", help="search the collected notes and the writing for a phrase"
+    )
+    find_parser.add_argument("text")
+    find_parser.add_argument("--vault", type=Path, required=True)
+    find_parser.add_argument(
+        "--in", dest="scope", choices=SCOPES, default="all", help="where to look"
+    )
+    find_parser.add_argument("--limit", type=int, default=50, help="how many notes to list")
+    find_parser.add_argument(
+        "--meta", action="store_true", help="search the front matter too (tags, folders, sources)"
+    )
+
+    snapshot_parser = subparsers.add_parser(
+        "snapshot", help="commit the whole vault as it stands; never pushes"
+    )
+    snapshot_parser.add_argument("--vault", type=Path, required=True)
+    snapshot_parser.add_argument("-m", "--message", help="what this save point is")
+
+    set_parser = subparsers.add_parser(
+        "set", help="change a project card's fields without opening it"
+    )
+    set_parser.add_argument("project_id")
+    set_parser.add_argument("--vault", type=Path, required=True)
+    set_parser.add_argument("--pillar")
+    set_parser.add_argument("--type", dest="type_")
+    set_parser.add_argument(
+        "--platform", action="append", dest="platforms", metavar="PLATFORM",
+        help="publication target; may repeat, and replaces what is on the card",
+    )
+    set_parser.add_argument("--promise")
+    set_parser.add_argument("--scheduled", metavar="DATE")
+
     status_parser = subparsers.add_parser("status", help="list content projects and their state")
     status_parser.add_argument("--vault", type=Path, required=True)
     status_parser.add_argument("--pillar")
@@ -212,12 +248,15 @@ def build_parser() -> argparse.ArgumentParser:
     week_parser = subparsers.add_parser("week", help="one page for the weekly session")
     week_parser.add_argument("--vault", type=Path, required=True)
 
-    review_parser = subparsers.add_parser(
-        "review", help="write today's sheet of collected material that has no outcome yet"
+    propose_parser = subparsers.add_parser(
+        "propose", help="write this round's sheet: what has no outcome yet, grouped into threads"
     )
-    review_parser.add_argument("--vault", type=Path, required=True)
-    review_parser.add_argument(
+    propose_parser.add_argument("--vault", type=Path, required=True)
+    propose_parser.add_argument(
         "--since", metavar="DATE", help="ignore anything collected before this date, e.g. 2026-09-01"
+    )
+    propose_parser.add_argument(
+        "--now", action="store_true", help="also offer today's material, from periods still accumulating"
     )
 
     material_parser = subparsers.add_parser(
@@ -269,14 +308,20 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.command == "material":
             return _material(load_config(args.vault), args.decision, args.source, as_json=args.as_json)
-        if args.command == "review":
-            return _review(load_config(args.vault), args.since, as_json=args.as_json)
+        if args.command == "propose":
+            return _propose(load_config(args.vault), args.since, as_json=args.as_json, now=args.now)
         if args.command == "apply":
             return _apply(load_config(args.vault), args.sheet, as_json=args.as_json)
         if args.command == "confirm":
             return _confirm(load_config(args.vault), args)
         if args.command == "gather":
             return _gather(load_config(args.vault), args)
+        if args.command == "set":
+            return _set(load_config(args.vault), args)
+        if args.command == "snapshot":
+            return _snapshot(load_config(args.vault), args)
+        if args.command == "find":
+            return _find(load_config(args.vault), args)
         if args.command in ("draft", "check", "accept", "adapt", "release", "publish"):
             return _project_step(load_config(args.vault), args)
         if args.command == "drop":
@@ -324,6 +369,8 @@ def _init(vault: Path, backend: str | None) -> int:
     config = initialize_vault(vault, selected)
     print(f"Initialized Asterism vault at {config.vault}")
     print("Private note content will be written only inside this vault.")
+    if (config.vault / ".git").is_dir():
+        print("It is a Git repository, so your writing has a history. Nothing is ever pushed.")
     return 0
 
 
@@ -331,10 +378,14 @@ def _doctor(config: Config, source_name: str, *, as_json: bool = False) -> int:
     storage = _storage_report(config)
     if not as_json:
         _print_storage(storage)
+    base = config.projects_root / BASE_FILE
+    broken_view = dead_filter(base) if base.is_file() else None
     checks: list[tuple[str, bool]] = [
         ("notes directory", config.notes_root.is_dir()),
         ("state directory", config.state_dir.is_dir()),
     ]
+    if base.is_file():
+        checks.append((f"{BASE_FILE} filter", broken_view is None))
     if source_name == "apple-notes":
         checks.extend(
             (
@@ -407,6 +458,15 @@ def _doctor(config: Config, source_name: str, *, as_json: bool = False) -> int:
 
 def _doctor_hints(config: Config, source_name: str) -> list[str]:
     """What to do about a failed check, in the order the person should try it."""
+    base = config.projects_root / BASE_FILE
+    broken_view = dead_filter(base) if base.is_file() else None
+    if broken_view:
+        return [
+            f"Hint: {BASE_FILE} filters on `{broken_view}`, which matches nothing: "
+            "file.name keeps the .md extension. Delete the file and run "
+            "`asterism status` to write a working one; any view you refined in "
+            "Obsidian is lost, so copy it out first if you want it."
+        ]
     if source_name == "flomo" and config.flomo_export_path is None:
         hints = ["Hint: configure sources.flomo.export_path in asterism.yaml."]
         if Path("/Applications/flomo.app").is_dir():
@@ -636,7 +696,7 @@ def _material(config: Config, decision: str | None, source: str | None, *, as_js
         return 0
     if not decision:
         print(", ".join(f"{count} {name}" for name, count in sorted(counts.items())) or "nothing collected yet")
-        print("Add --status to list one outcome; the sheets under review/ hold the full record.")
+        print("Add --status to list one outcome; the sheets under picks/ hold the full record.")
         return 0
     for outcome, path, project_id in sorted(rows, key=lambda row: row[1]):
         print(f"{outcome:<10}{path}" + (f"   -> {project_id}" if project_id else ""))
@@ -644,17 +704,26 @@ def _material(config: Config, decision: str | None, source: str | None, *, as_js
     return 0
 
 
-def _review(config: Config, since: str | None, today: date | None = None, *, as_json: bool = False) -> int:
+def _propose(
+    config: Config,
+    since: str | None,
+    today: date | None = None,
+    *,
+    as_json: bool = False,
+    now: bool = False,
+) -> int:
     start = date.fromisoformat(since) if since else None
     with _state_backend(config) as state:
-        sheet = build_sheet(config, state, since=start, today=today)
+        sheet = build_sheet(config, state, since=start, today=today, include_open=now)
     where = sheet.path.relative_to(config.vault)
     if as_json:
-        emit("review", {
+        emit("propose", {
             "sheet": where.as_posix(),
             "listed": sheet.listed,
+            "waiting": sheet.waiting,
             "covers": sheet.covers,
             "auto": sheet.auto,
+            "written": sheet.written,
             "lines": [
                 {"path": line.relative_path, "title": line.title, "day": line.day,
                  "section": line.decision, "topic": line.group or None, "pillar": line.pillar}
@@ -665,11 +734,21 @@ def _review(config: Config, since: str | None, today: date | None = None, *, as_
     for key, count in sorted(sheet.auto.items()):
         print(f"Applied by rule: {count} ({key})")
     if not sheet.lines:
-        print(f"Nothing to decide; {where} is empty.")
+        if sheet.waiting:
+            print(f"Nothing to decide yet; {where} is empty.")
+            print(
+                f"{sheet.waiting} item(s) are waiting in periods that have not closed. "
+                "A period is offered once it is over, so today's material comes next round;"
+            )
+            print("  `asterism propose --now` sorts it today instead.")
+        else:
+            print(f"Nothing to decide; {where} is empty.")
         return 0
     print(f"{sheet.listed} item(s) to sort in {where}")
     for source, labels in sheet.covers.items():
         print(f"  read {source}: {', '.join(labels)}")
+    for thread, before in sheet.written.items():
+        print(f"  thread '{thread}' is already in {', '.join(before)}")
     print("Move each line into the section that says what happens to it, then run `asterism apply`.")
     return 0
 
@@ -678,8 +757,8 @@ def _apply(config: Config, sheet_date: str | None, today: date | None = None, *,
     path = latest_sheet(config, sheet_date or "")
     if path is None or not path.is_file():
         raise FileNotFoundError(
-            f"no review sheet matching {sheet_date!r}" if sheet_date
-            else "no review sheet to apply; run `asterism review` first"
+            f"no sheet matching {sheet_date!r}" if sheet_date
+            else "nothing to apply; run `asterism propose` first"
         )
     with _state_backend(config) as state:
         recorded, created = apply_sheet(config, state, path, today=today)
@@ -701,7 +780,7 @@ def _apply(config: Config, sheet_date: str | None, today: date | None = None, *,
     for _line, project_id in created:
         print(f"Created {project_id}")
     if created:
-        print("Fill in each brief, then move the status on from 'making'.")
+        print("Write the angles into each brief, then `asterism confirm <id>` to choose one.")
     return 0
 
 
@@ -720,7 +799,8 @@ def _confirm(config: Config, args: argparse.Namespace) -> int:
                 "status": project.status,
                 "confirmed": False,
                 "angles": [
-                    {"number": a.number, "title": a.title, "promise": a.promise or None}
+                    {"number": a.number, "title": a.title, "promise": a.promise or None,
+                     "reason": a.reason or None}
                     for a in offered
                 ],
                 **({"hint": hint} if hint else {}),
@@ -731,6 +811,8 @@ def _confirm(config: Config, args: argparse.Namespace) -> int:
         print(f"{project.id} offers {len(offered)} angle(s); confirm one with --angle N:")
         for angle in offered:
             print(f"  {angle.number}. {angle.title}" + (f" - {angle.promise}" if angle.promise else ""))
+            if angle.reason:
+                print(f"     {angle.reason}")
         return 1
     confirmed = confirm_project(
         config, project, angle=args.angle, title=args.title, promise=args.promise
@@ -824,31 +906,38 @@ def _project_step(config: Config, args: argparse.Namespace) -> int:
 
 
 def _draft(config: Config, project, args: argparse.Namespace) -> int:
-    target, headings = compose_draft(config, project)
+    target, headings, created = compose_draft(config, project)
     relative = target.relative_to(config.vault).as_posix()
     if args.as_json:
         emit("draft", {"project": project.id, "draft": relative, "headings": headings,
-                       "material": len(project.sources)})
+                       "material": len(project.sources), "created": created})
         return 0
-    print(f"{project.id}: {relative} ({len(headings)} section(s), {len(project.sources)} item(s) of material)")
-    print(f"Write the prose, then run `asterism check {project.id}`.")
+    if created:
+        print(f"{project.id}: wrote {relative} ({len(headings)} section(s) from the brief's outline, "
+              f"{len(project.sources)} item(s) of material)")
+        print(f"Write the prose, then run `asterism check {project.id}`.")
+    else:
+        print(f"{project.id}: refreshed the material list in {relative}; the prose was not touched.")
     return 0
 
 
 def _check(config: Config, project, args: argparse.Namespace) -> int:
-    target, findings = write_draft_gate(config, project)
+    target, checked = write_draft_gate(config, project)
     relative = target.relative_to(config.vault).as_posix()
     if args.as_json:
         emit("check", {
             "project": project.id,
             "sheet": relative,
-            "findings": [{"kind": f.kind, "detail": f.detail} for f in findings],
+            "findings": [{"kind": f.kind, "detail": f.detail} for f in checked.findings],
+            "gathered": checked.gathered,
+            "cited": checked.cited,
         })
         return 0
     print(f"{project.id}: gate 2 in {relative}")
-    for finding in findings:
+    print(f"  material: {checked.material}")
+    for finding in checked.findings:
         print(f"  {finding.kind}: {finding.detail}")
-    if not findings:
+    if not checked.findings:
         print("  the checks found nothing")
     print(f"Answer the questions in the sheet, then run `asterism accept {project.id}`.")
     return 0
@@ -862,7 +951,10 @@ def _accept(config: Config, project, args: argparse.Namespace) -> int:
                         "next": NEXT_ACTION[moved.status]})
         return 0
     print(f"{moved.id} is ready; {NEXT_ACTION[moved.status]}.")
-    print(f"Write the platform versions with `asterism adapt {moved.id}`.")
+    if moved.platforms:
+        print(f"Write the platform versions with `asterism adapt {moved.id}`.")
+    else:
+        print(f"No platform on the card, so there is nothing to adapt; run `asterism release {moved.id}`.")
     return 0
 
 
@@ -914,8 +1006,104 @@ def _publish(config: Config, project, args: argparse.Namespace) -> int:
         emit("publish", {"project": moved.id, "status": moved.status,
                          "published": published, "next": NEXT_ACTION[moved.status]})
         return 0
-    print(f"{moved.id} is published on {', '.join(sorted(published))}.")
+    where = ", ".join(sorted(published)) if published else "no platform"
+    print(f"{moved.id} is published on {where}.")
     print("Nothing was pushed anywhere; the record is on the card.")
+    return 0
+
+
+MAX_LINES_SHOWN = 3  # per note; the note is the answer, the lines say why
+
+
+def _find(config: Config, args: argparse.Namespace) -> int:
+    """One entry per note: when it was written, what became of it, and the lines that matched."""
+    notes = search_notes(config, args.text, scope=args.scope, limit=args.limit, meta=args.meta)
+    outcomes = _outcomes(config, [note.path for note in notes]) if notes else {}
+    if args.as_json:
+        emit("find", {
+            "text": args.text,
+            "scope": args.scope,
+            "notes": [
+                {
+                    "path": note.path,
+                    "title": note.title,
+                    "day": note.day or None,
+                    "outcome": outcomes.get(note.path, (None, None))[0],
+                    "project": outcomes.get(note.path, (None, None))[1],
+                    "lines": [{"line": hit.line, "text": hit.text} for hit in note.lines],
+                }
+                for note in notes
+            ],
+            "hits": [{"path": hit.path, "line": hit.line, "text": hit.text} for note in notes for hit in note.lines],
+        })
+        return 0
+    if not notes:
+        where = f"{args.scope}, front matter included" if args.meta else args.scope
+        print(f"No note contains {args.text!r} in {where}.")
+        return 0
+    for note in notes:
+        outcome, project_id = outcomes.get(note.path, (None, None))
+        fate = f"  [{outcome}" + (f" -> {project_id}]" if project_id else "]") if outcome else ""
+        print(f"{note.day or '          '}  {note.path}{fate}")
+        for hit in note.lines[:MAX_LINES_SHOWN]:
+            print(f"    {hit.line:>4}  {hit.text}")
+        if len(note.lines) > MAX_LINES_SHOWN:
+            print(f"          ... and {len(note.lines) - MAX_LINES_SHOWN} more line(s)")
+    lines = sum(len(note.lines) for note in notes)
+    print(f"{len(notes)} note(s), {lines} line(s)")
+    return 0
+
+
+def _outcomes(config: Config, paths: list[str]) -> dict[str, tuple[str, str | None]]:
+    """What the person decided about each collected note, by vault path."""
+    wanted = set(paths)
+    found: dict[str, tuple[str, str | None]] = {}
+    try:
+        with _state_backend(config) as state:
+            for source in state.sources():
+                for item in state.items(source):
+                    if item.relative_path not in wanted:
+                        continue
+                    assignment = state.get_assignment(item.source, item.source_id)
+                    if assignment is not None:
+                        found[item.relative_path] = (assignment.decision, assignment.project_id)
+    except OSError:
+        return {}
+    return found
+
+
+def _set(config: Config, args: argparse.Namespace) -> int:
+    """Edit the card from the command line, the way Obsidian's panel edits it.
+
+    Status is not here: it only moves through the gates.
+    """
+    registry = load_projects(config)
+    project = registry.find(args.project_id)
+    if project is None:
+        raise ValueError(f"no live project with id {args.project_id!r}")
+    updated = set_fields(
+        config,
+        project,
+        pillar=args.pillar,
+        type_=args.type_,
+        platforms=tuple(args.platforms) if args.platforms else None,
+        promise=args.promise,
+        scheduled=date.fromisoformat(args.scheduled) if args.scheduled else None,
+    )
+    write_views(config, load_projects(config))
+    if args.as_json:
+        emit("set", _project_payload(config, updated))
+        return 0
+    print(_project_line(config, updated))
+    return 0
+
+
+def _snapshot(config: Config, args: argparse.Namespace) -> int:
+    note = _commit_vault(config.vault, args.message)
+    if args.as_json:
+        emit("snapshot", {"result": note}, ok="Committed" in note)
+        return 0
+    print(note)
     return 0
 
 
@@ -1020,10 +1208,11 @@ def _week(config: Config, today: date | None = None, *, as_json: bool = False) -
             print(f"  {project.id}  {project.title}")
     elapsed = days_since_last(config, today=today)
     if elapsed is None:
-        print("\nNo review sheet yet. Run `asterism review` to sort what has been collected.")
-    elif elapsed >= config.review.every:
-        print(f"\nLast review was {elapsed} day(s) ago; you sort every {config.review.every}.")
-        print("  run `asterism review`")
+        print("\nNothing chosen yet. Run `asterism propose` to see what has been collected,")
+        print("  or `asterism propose --now` to include what was collected today.")
+    elif elapsed >= config.picks.every:
+        print(f"\nLast round was {elapsed} day(s) ago; you choose every {config.picks.every}.")
+        print("  run `asterism propose`")
     if not in_flight and not published:
         print("\nNothing in flight.")
     return 0
@@ -1060,8 +1249,8 @@ def _week_json(config: Config, registry, period, in_flight, today: date) -> int:
         "period": {"label": period.label, "start": period.start, "end": period.end},
         "in_flight": [_project_payload(config, project) for project in in_flight],
         "published": [_project_payload(config, project) for project in published],
-        "days_since_review": elapsed,
-        "review_due": elapsed is None or elapsed >= config.review.every,
+        "days_since_round": elapsed,
+        "round_due": elapsed is None or elapsed >= config.picks.every,
     })
     return 0
 
@@ -1144,7 +1333,8 @@ def _sync_all(
             if not as_json:
                 print(f"Commit {commit_note}.", file=sys.stderr)
         else:
-            commit_note = _commit_vault(config.vault, created, updated)
+            stamp = datetime.now().astimezone().replace(microsecond=0).isoformat()
+            commit_note = _commit_vault(config.vault, f"sync {stamp} (+{created} ~{updated})")
             if not as_json:
                 print(commit_note)
     if as_json:
@@ -1164,8 +1354,13 @@ def _sync_all(
     return 1 if failures else 0
 
 
-def _commit_vault(vault: Path, created: int, updated: int) -> str:
-    """Stage notes and digests and commit them; never pushes."""
+def _commit_vault(vault: Path, message: str | None = None) -> str:
+    """Commit everything the vault tracks; never pushes.
+
+    Drafts, briefs and gate sheets are the work, not a by-product, so a
+    snapshot that covered only ``notes/`` left the writing with no history at
+    all. What is not worth keeping is already in the vault's ``.gitignore``.
+    """
     def git(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         completed = subprocess.run(
             ["git", "-C", str(vault), *arguments], capture_output=True, text=True, check=False, timeout=120
@@ -1177,14 +1372,14 @@ def _commit_vault(vault: Path, created: int, updated: int) -> str:
     inside = git("rev-parse", "--is-inside-work-tree", check=False)
     if inside.returncode != 0 or inside.stdout.strip() != "true":
         return "Commit skipped: the vault is not a Git repository (run `git init` there to enable snapshots)."
-    git("add", "-A", "--", "notes")
+    git("add", "-A")
     staged = git("diff", "--cached", "--quiet", check=False)
     if staged.returncode == 0:
         return "Commit skipped: nothing changed."
     stamp = datetime.now().astimezone().replace(microsecond=0).isoformat()
-    message = f"sync {stamp} (+{created} ~{updated})"
-    git("commit", "-q", "-m", message)
-    return f"Committed: {message}"
+    text = message or f"snapshot {stamp}"
+    git("commit", "-q", "-m", text)
+    return f"Committed: {text}"
 
 
 if __name__ == "__main__":

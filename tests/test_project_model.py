@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from asterism.config import CONFIG_NAME, ConfigError, initialize_vault, load_config
-from asterism.projects import ContentProject, ProjectError, artifact_path, stage_directory
+from asterism.projects import Project, ProjectError, artifact_path, stage_directory
 
 
 CARD = """---
@@ -33,7 +33,7 @@ Notes to myself.
 
 class ProjectCardTest(unittest.TestCase):
     def test_reads_a_hand_written_card(self) -> None:
-        project = ContentProject.from_markdown(CARD)
+        project = Project.from_markdown(CARD)
         self.assertEqual(("2026-042", "making", "vibe-coding"), (project.id, project.status, project.pillar))
         self.assertEqual(date(2026, 10, 12), project.scheduled)
         self.assertEqual(("blog", "zhihu"), project.platforms)
@@ -43,13 +43,13 @@ class ProjectCardTest(unittest.TestCase):
         self.assertTrue(project.is_published is False)
 
     def test_round_trip_keeps_every_key_and_the_body(self) -> None:
-        project = ContentProject.from_markdown(CARD)
-        again = ContentProject.from_markdown(project.to_markdown())
+        project = Project.from_markdown(CARD)
+        again = Project.from_markdown(project.to_markdown())
         self.assertEqual(project.front_matter(), again.front_matter())
         self.assertEqual(project.body.strip(), again.body.strip())
 
     def test_empty_values_stay_visible_for_obsidian_properties(self) -> None:
-        text = ContentProject(id="2026-001", title="T").to_markdown()
+        text = Project(id="2026-001", title="T").to_markdown()
         for key in ("pillar", "type", "promise", "primary", "scheduled", "notion"):
             self.assertIn(f"{key}: null", text)
         self.assertIn("platforms: []", text)
@@ -67,13 +67,13 @@ class ProjectCardTest(unittest.TestCase):
         }
         for text, needle in cases.items():
             with self.assertRaises(ProjectError, msg=text) as raised:
-                ContentProject.from_markdown(text)
+                Project.from_markdown(text)
             self.assertIn(needle, str(raised.exception))
 
     def test_load_reports_a_missing_card(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ProjectError):
-                ContentProject.load(Path(temporary))
+                Project.load(Path(temporary))
 
 
 class ProjectConfigTest(unittest.TestCase):

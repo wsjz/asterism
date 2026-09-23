@@ -3,7 +3,7 @@ import tempfile
 import unittest
 
 from asterism.config import CONFIG_NAME, Pillar, initialize_vault, load_config
-from asterism.enrich import classify, classify_item, item_facets
+from asterism.enrich import classify, classify_item, classify_text, item_facets
 from asterism.models import ItemState, SourceItem
 from asterism.rendering import render_markdown
 from asterism.vault import atomic_write
@@ -54,6 +54,28 @@ def _vault(temporary: str) -> Path:
         encoding="utf-8",
     )
     return vault
+
+
+class ClassifyTextTest(unittest.TestCase):
+    """A topic heading carries a pillar even when none of its material was tagged."""
+
+    PILLARS = (
+        Pillar(key="tooling", name="工具设计", tags=("cli", "tooling")),
+        Pillar(key="writing", name="写作", tags=("写作", "writing")),
+    )
+
+    def test_an_ascii_alias_matches_a_whole_word(self) -> None:
+        self.assertEqual("tooling", classify_text(self.PILLARS, "CLI 设计的四条判断"))
+
+    def test_an_ascii_alias_does_not_match_inside_another_word(self) -> None:
+        self.assertIsNone(classify_text(self.PILLARS, "client 端的重试策略"))
+
+    def test_an_alias_in_another_script_matches_anywhere(self) -> None:
+        self.assertEqual("writing", classify_text(self.PILLARS, "写作流程里最贵的一步"))
+
+    def test_nothing_matching_stays_unclassified(self) -> None:
+        self.assertIsNone(classify_text(self.PILLARS, "关于渐进式重构"))
+        self.assertIsNone(classify_text(self.PILLARS, "   "))
 
 
 if __name__ == "__main__":

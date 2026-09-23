@@ -6,7 +6,8 @@ import tempfile
 import unittest
 from zoneinfo import ZoneInfo
 
-from asterism.cli import _apply, _review, main
+from asterism.cli import _apply, _propose, main
+from asterism.projects import create_project
 from asterism.config import CONFIG_NAME, ConfigError, initialize_vault, load_config
 from asterism.digest import DigestBuilder
 from asterism.gates import build_sheet, coverage, latest_sheet, read_sheet, sheets
@@ -129,20 +130,20 @@ class SheetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            code, out = _call(_review, load_config(vault), None, TODAY)
+            code, out = _call(_propose, load_config(vault), None, TODAY)
             self.assertEqual(0, code)
             self.assertIn("Applied by rule: 1", out)
             self.assertIn("read flomo: 2026-W38, 2026-09-24", out)
 
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             text = sheet.read_text(encoding="utf-8")
             self.assertIn("## IV. reference", text)
             self.assertIn("[[notes/flomo/origin/Desk lighting|Desk lighting]] (desk-setup)", text)
             self.assertNotIn("Buy milk", text)  # the auto rule took it without asking
             fields, lines = read_sheet(text)
             self.assertEqual("open", fields["state"])
-            self.assertRegex(str(fields["review"]), r"^2026-09-26 \d{2}:\d{2}:\d{2}$")
-            self.assertIn(f"# Review {fields["review"]}", text)
+            self.assertRegex(str(fields["round"]), r"^2026-09-26 \d{2}:\d{2}:\d{2}$")
+            self.assertIn(f"# Picks {fields["round"]}", text)
             self.assertEqual(3, len(lines))
             self.assertEqual({"reference"}, {line.decision for line in lines})
 
@@ -154,10 +155,10 @@ class SheetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _move(sheet, "Desk lighting", "used")
-            _call(_review, load_config(vault), None, TODAY)
+            _call(_propose, load_config(vault), None, TODAY)
             _, lines = read_sheet(sheet.read_text(encoding="utf-8"))
             self.assertEqual("used", next(l.decision for l in lines if "Desk lighting" in l.relative_path))
 
@@ -165,8 +166,8 @@ class SheetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), "2026-09-20", TODAY)
-            _, lines = read_sheet(next(iter(sorted((vault / "review").glob("*.md")))).read_text(encoding="utf-8"))
+            _call(_propose, load_config(vault), "2026-09-20", TODAY)
+            _, lines = read_sheet(next(iter(sorted((vault / "picks").glob("*.md")))).read_text(encoding="utf-8"))
             self.assertEqual(["notes/flomo/origin/After the week.md"], [line.relative_path for line in lines])
 
 
@@ -175,8 +176,8 @@ class ApplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _move(sheet, "Desk lighting", "used")
             _move(sheet, "A loose thought", "later")
 
@@ -201,8 +202,8 @@ class ApplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            _move(next(iter(sorted((vault / "review").glob("*.md")))), "Desk lighting", "used")
+            _call(_propose, load_config(vault), None, TODAY)
+            _move(next(iter(sorted((vault / "picks").glob("*.md")))), "Desk lighting", "used")
             _call(_apply, load_config(vault), None, TODAY)
             code, out = _call(_apply, load_config(vault), None, TODAY)
             self.assertEqual(0, code)
@@ -213,8 +214,8 @@ class ApplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            _move(next(iter(sorted((vault / "review").glob("*.md")))), "A loose thought", "later")
+            _call(_propose, load_config(vault), None, TODAY)
+            _move(next(iter(sorted((vault / "picks").glob("*.md")))), "A loose thought", "later")
             _call(_apply, load_config(vault), None, TODAY)
 
             config = load_config(vault)
@@ -229,18 +230,25 @@ class ApplyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            first = next((vault / "review").glob("*.md"))
+            _call(_propose, load_config(vault), None, TODAY)
+            first = next((vault / "picks").glob("*.md"))
             _move(first, "Desk lighting", "used")
             _call(_apply, load_config(vault), None, TODAY)
             recorded = first.read_text(encoding="utf-8")
 
             # a second round the same day opens its own sheet and leaves the record alone
-            _call(_review, load_config(vault), None, TODAY)
+            config = load_config(vault)
+            with FileStateBackend(config.state_dir / "manifest.json") as state:
+                Pipeline(FakeSource([SourceItem(
+                    "flomo", "m9", "Something new", "Body",
+                    created_at=datetime(2026, 9, 16, 9, 0, tzinfo=SH),
+                )]), state, config.vault).sync()
+            _call(_propose, load_config(vault), None, TODAY)
+
             self.assertEqual(recorded, first.read_text(encoding="utf-8"))
             self.assertIn('state: "applied"', recorded)
             self.assertIn("Desk lighting", recorded)
-            both = sorted((vault / "review").glob("*.md"))
+            both = sorted((vault / "picks").glob("*.md"))
             self.assertEqual(2, len(both))
             self.assertRegex(both[1].stem, r"^2026-09-26-\d{6}")  # the name carries the time
             self.assertNotIn("Desk lighting", both[1].read_text(encoding="utf-8"))
@@ -250,7 +258,7 @@ class ApplyTest(unittest.TestCase):
             vault = _vault(temporary)
             code, _, err = _run("apply", "--vault", str(vault))
             self.assertEqual(1, code)
-            self.assertIn("no review sheet", err)
+            self.assertIn("nothing to apply", err)
 
 
 class MaterialTest(unittest.TestCase):
@@ -258,8 +266,8 @@ class MaterialTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _move(sheet, "Desk lighting", "used")
             _move(sheet, "A loose thought", "dropped")
             _call(_apply, load_config(vault), None, TODAY)
@@ -282,8 +290,8 @@ class TopicTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _group_under(sheet, "September report", ("Desk lighting", "A loose thought"))
 
             code, out = _call(_apply, load_config(vault), None, TODAY)
@@ -310,8 +318,8 @@ class TopicTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _group_under(sheet, "September report", ("Desk lighting",))
             _move(sheet, "A loose thought", "used")
 
@@ -323,11 +331,11 @@ class TopicTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             _group_under(sheet, "September report", ("Desk lighting", "A loose thought"))
 
-            _call(_review, load_config(vault), None, TODAY)  # the same open sheet, rebuilt
+            _call(_propose, load_config(vault), None, TODAY)  # the same open sheet, rebuilt
             _, lines = read_sheet(sheet.read_text(encoding="utf-8"))
             grouped = {line.group for line in lines if line.decision == "used"}
             self.assertEqual({"September report"}, grouped)
@@ -336,12 +344,140 @@ class TopicTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sheet = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
             text = sheet.read_text(encoding="utf-8")
             self.assertIn("### 1. flomo", text)
             _, lines = read_sheet(text)
             self.assertEqual({""}, {line.group for line in lines})
+
+
+THREAD_ITEMS = [
+    SourceItem("flomo", "t1", "Day one", "**SQL API**\n\n- CTE design",
+               created_at=datetime(2026, 9, 14, 9, 0, tzinfo=SH)),
+    SourceItem("flomo", "t2", "Day two", "**SQL API (P0)**\n\n- predicate pushdown",
+               created_at=datetime(2026, 9, 15, 9, 0, tzinfo=SH)),
+    SourceItem("flomo", "t3", "Day three", "**SQL API (P1)**\n\n- final review",
+               created_at=datetime(2026, 9, 16, 9, 0, tzinfo=SH)),
+    SourceItem("flomo", "t4", "Unrelated", "**Desk lighting**\n\n- a lamp",
+               created_at=datetime(2026, 9, 17, 9, 0, tzinfo=SH)),
+]
+
+
+class ThreadTest(unittest.TestCase):
+    """A heading the person wrote again and again is a thread worth reading whole."""
+
+    def _sheet(self, vault: Path) -> str:
+        config = load_config(vault)
+        with FileStateBackend(config.state_dir / "manifest.json") as state:
+            Pipeline(FakeSource(THREAD_ITEMS), state, config.vault).sync()
+            DigestBuilder(config, state, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH)).run()
+            sheet = build_sheet(config, state, today=TODAY)
+        return sheet.path.read_text(encoding="utf-8")
+
+    def test_a_repeated_heading_becomes_a_group_with_its_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            text = self._sheet(_vault(temporary))
+            self.assertIn("### SQL API", text)
+            self.assertIn("_3 note(s) repeat this heading._", text)
+
+    def test_an_annotation_does_not_split_a_thread(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            text = self._sheet(_vault(temporary))
+            # "SQL API", "SQL API (P0)" and "SQL API (P1)" are one thread
+            self.assertNotIn("### SQL API (P0)", text)
+
+    def test_a_thread_already_written_says_so(self) -> None:
+        """The first question about a recurring thread is whether it is already a piece."""
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            config = load_config(vault)
+            create_project(config, title="SQL API", status="making", today=TODAY)
+            text = self._sheet(vault)
+            self.assertIn("_3 note(s) repeat this heading. Already in 2026-001 (making)._", text)
+
+    def test_a_thread_written_about_in_a_draft_is_found_too(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            config = load_config(vault)
+            project = create_project(config, title="Another name", status="making", today=TODAY)
+            (project.directory / "03-draft.md").write_text("# Another name\n\nThe SQL API story.\n", encoding="utf-8")
+            text = self._sheet(vault)
+            self.assertIn("Already in 2026-001 (making)", text)
+
+    def test_a_heading_below_the_threshold_stays_in_the_source_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            text = self._sheet(_vault(temporary))
+            self.assertNotIn("### Desk lighting", text)
+            self.assertIn("Unrelated", text)
+
+    def test_a_thread_can_be_applied_as_one_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            self._sheet(vault)
+            sheet = next(iter(sorted((vault / "picks").glob("*.md"))))
+            # move the whole thread, heading and all, into used
+            lines = sheet.read_text(encoding="utf-8").splitlines()
+            start = lines.index("### SQL API")
+            end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("### "))
+            block = [line for line in lines[start:end] if line.strip()]
+            del lines[start:end]
+            index = next(i for i, line in enumerate(lines) if line.endswith(" used"))
+            lines[index + 4 : index + 4] = block + [""]
+            sheet.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            _call(_apply, load_config(vault), None, TODAY)
+            projects = load_projects(load_config(vault)).projects
+            self.assertEqual(["SQL API"], [project.title for project in projects])
+            self.assertEqual(3, len(projects[0].sources))
+
+
+class WaitingTest(unittest.TestCase):
+    def test_an_empty_sheet_says_whether_anything_is_waiting(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            config = load_config(vault)
+            today = datetime.now().astimezone()
+            fresh = [SourceItem("flomo", "n1", "Just written", "Body", created_at=today)]
+            with FileStateBackend(config.state_dir / "manifest.json") as state:
+                Pipeline(FakeSource(fresh), state, config.vault).sync()
+                DigestBuilder(config, state, now=today).run()
+                sheet = build_sheet(config, state, today=today.date())
+            self.assertEqual(0, sheet.listed)
+            self.assertEqual(1, sheet.waiting)  # its period has not closed
+
+            code, out = _call(_propose, load_config(vault), None, today.date())
+            self.assertEqual(0, code)
+            self.assertIn("waiting in periods that have not closed", out)
+            self.assertIn("propose --now", out)  # the way out, named
+
+    def test_now_offers_what_was_written_today(self) -> None:
+        """The first day with the tool should end with a sheet, not with 'come back tomorrow'."""
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            config = load_config(vault)
+            today = datetime.now().astimezone()
+            fresh = [SourceItem("flomo", "n1", "Just written", "Body", created_at=today)]
+            with FileStateBackend(config.state_dir / "manifest.json") as state:
+                Pipeline(FakeSource(fresh), state, config.vault).sync()
+                DigestBuilder(config, state, now=today).run()
+                sheet = build_sheet(config, state, today=today.date(), include_open=True)
+            self.assertEqual(["Just written"], [line.title for line in sheet.lines])
+            self.assertEqual(0, sheet.waiting)
+            self.assertTrue(sheet.path.is_file())
+
+            code, out, _err = _run("propose", "--vault", str(vault), "--now")
+            self.assertEqual(0, code)
+            self.assertIn("1 item(s) to sort", out)
+
+
+    def test_a_round_with_nothing_to_decide_leaves_no_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            config = load_config(vault)
+            with FileStateBackend(config.state_dir / "manifest.json") as state:
+                build_sheet(config, state, today=TODAY)
+            self.assertEqual([], sorted((vault / "picks").glob("*.md")))
 
 
 class SheetDiscoveryTest(unittest.TestCase):
@@ -349,11 +485,11 @@ class SheetDiscoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             _seed(vault, now=datetime(2026, 9, 26, 9, 0, tzinfo=SH))
-            _call(_review, load_config(vault), None, TODAY)
-            sorting = next(iter(sorted((vault / "review").glob("*.md"))))
+            _call(_propose, load_config(vault), None, TODAY)
+            sorting = next(iter(sorted((vault / "picks").glob("*.md"))))
 
             # a name of the same shape, which a project id can produce
-            intruder = vault / "review" / "2026-ai-001-draft.md"
+            intruder = vault / "picks" / "2026-ai-001-draft.md"
             intruder.write_text(
                 '---\nschema: 1\nkind: "check"\nstate: "open"\n---\n\n- [ ] ok\n',
                 encoding="utf-8",
@@ -365,8 +501,8 @@ class SheetDiscoveryTest(unittest.TestCase):
     def test_a_sheet_written_before_kind_existed_is_still_read(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
-            (vault / "review").mkdir(exist_ok=True)
-            old = vault / "review" / "2026-09-20-101010.md"
+            (vault / "picks").mkdir(exist_ok=True)
+            old = vault / "picks" / "2026-09-20-101010.md"
             old.write_text('---\nschema: 1\nstate: "open"\n---\n', encoding="utf-8")
             self.assertEqual([old], sheets(load_config(vault)))
 

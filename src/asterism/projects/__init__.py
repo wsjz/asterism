@@ -1,6 +1,6 @@
 """Content projects: the object the pipeline produces, one folder per piece."""
-from .model import BRIEF_FILE, PROJECT_FILE, ContentProject, ProjectError, split_front_matter
-from .confirm import Angle, angles, confirm_project, offers_angles
+from .model import BRIEF_FILE, PROJECT_FILE, Project, ProjectError, split_front_matter
+from .confirm import Angle, angles, confirm_project, offers_angles, set_fields
 from .gather import Gathered, gather_into, matching_items
 from .index import INDEX_FILE, write_views
 from .lifecycle import drop_project, restore_project
@@ -12,7 +12,7 @@ from .stages import ARTIFACT_ORDER, artifact_path, find_artifact, stage_director
 __all__ = [
     "Angle",
     "BRIEF_FILE",
-    "ContentProject",
+    "Project",
     "Gathered",
     "PROJECT_FILE",
     "ProjectError",
@@ -34,6 +34,7 @@ __all__ = [
     "render_path",
     "render_template",
     "restore_project",
+    "set_fields",
     "split_front_matter",
     "stage_directory",
     "stage_for_artifact",

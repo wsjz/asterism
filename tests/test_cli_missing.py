@@ -14,8 +14,8 @@ class MissingCommandTest(unittest.TestCase):
     def test_lists_items_not_seen_in_latest_sync(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            with FileStateBackend(vault / "state" / "manifest.json") as state:
+            config = initialize_vault(vault, "file")
+            with FileStateBackend(config.state_dir / "manifest.json") as state:
                 state.save(ItemState("flomo", "old", "notes/flomo/origin/old.md", "sha256:a", None,
                                      "2026-09-01T00:00:00+00:00", first_seen_at="2026-09-01T00:00:00+00:00"))
                 state.save(ItemState("flomo", "new", "notes/flomo/origin/new.md", "sha256:b", None,

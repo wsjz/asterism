@@ -12,8 +12,8 @@ bookkeeping. They do not overlap: each answers a different question.
 |---|---|---|---|
 | Source health | Is this source working, and how much has piled up? | state, one row per source | `ok`, `failed`, `auth_required` |
 | Material | What did I decide about this collected item? | state, one row per item | none, `later`, `reference`, `used`, `dropped` |
-| Sheet | Has this sheet been applied? | `review/<date>.md`, `content/<project>/{check,release}.md` front matter | `open`, `applied` |
-| Content project | How far along is this piece? | `content/<project>/01-project.md` front matter | `candidate`, `making`, `ready`, `published`, `retrospected`, `dropped` |
+| Sheet | Has this sheet been applied? | `picks/<date>.md`, `projects/<project>/{check,release}.md` front matter | `open`, `applied` |
+| Content project | How far along is this piece? | `projects/<project>/01-project.md` front matter | `candidate`, `making`, `ready`, `published`, `retrospected`, `dropped` |
 | Digest lifecycle (internal) | Can this period still change? | state, one row per source, level and period | `open`, `closed`, `rolled`, `archived` |
 
 ## Source health
@@ -45,7 +45,7 @@ by the person moving a line in a review sheet.
 
 Statuses are never written into `notes/<source>/origin/`, because that tree
 is a mirror the collector rewrites. The permanent human-readable record is the review sheets
-under `review/`, which are kept; state is the index over them.
+under `picks/`, which are kept; state is the index over them.
 
 ## Sheet
 
@@ -60,9 +60,9 @@ as the record of what was decided when.
 
 | Sheet | Asks | Written by | Read by |
 |---|---|---|---|
-| `review/<date>.md` | where does each collected item go? | `review` | `apply` |
-| `content/<project>/04-check.md` | is the draft good enough? (gate 2) | `check` | `accept` |
-| `content/<project>/06-release.md` | does this go out? (gate 3) | `release` | `publish` |
+| `picks/<date>.md` | where does each collected item go? | `propose` | `apply` |
+| `projects/<project>/04-check.md` | is the draft good enough? (gate 2) | `check` | `accept` |
+| `projects/<project>/06-release.md` | does this go out? (gate 3) | `release` | `publish` |
 
 A sorting sheet is answered by moving lines between headings, because it asks
 about many items at once; a gate sheet is answered by ticking boxes, because it
@@ -70,7 +70,7 @@ asks one question. The two shapes differ only where what they ask differs;
 `kind` in the front matter says which one a file is.
 
 A gate sheet lives in the project it belongs to, so dropping a project takes
-its gates with it and `review/` holds sorting rounds alone.
+its gates with it and `picks/` holds sorting rounds alone.
 
 A sheet is built by covering the undecided span with the fewest digest
 documents: from the earliest undecided day, take the coarsest digest that is
@@ -97,8 +97,8 @@ one is a different question:
 | Gate | Question | Where it is answered |
 |---|---|---|
 | 1 — confirm the topic | Is this pile of material worth a piece, and which angle? | `project.md` and the brief's `## Candidate angles` |
-| 2 — review the draft | Is the draft good enough to adapt and publish? | `content/<project>/04-check.md` |
-| 3 — confirm publication | Does this go out, to these platforms, now? | `content/<project>/06-release.md` |
+| 2 — review the draft | Is the draft good enough to adapt and publish? | `projects/<project>/04-check.md` |
+| 3 — confirm publication | Does this go out now, and to which platforms if any? | `projects/<project>/06-release.md` |
 
 A `candidate` is therefore not an empty placeholder: it already holds the
 material that was gathered for it and, in its brief, the angles that material
@@ -116,7 +116,7 @@ a dropped project keeps everything it had, so restarting it is changing the
 status back and moving the folder home.
 
 Dropped projects live under `trash/` at the vault root, mirroring the same
-`<year>/<project>` path they had under `content/`. `content/` therefore holds
+`<year>/<project>` path they had under `projects/`. `projects/` therefore holds
 only live work, and `status` reads it alone unless asked otherwise.
 `asterism drop <id>` sets the status and moves the folder; `asterism restore
 <id>` moves it back as a `candidate`. Nothing is ever deleted.
@@ -143,7 +143,7 @@ with the first.
   and `drafted` became `making`; `reviewed`, `adapted` and `staged` became
   `ready`; `archived` became a storage action.
 - Abandoning a piece was first defined as moving the folder out of
-  `content/` with no state of its own. That is replaced: `dropped` is the
+  `projects/` with no state of its own. That is replaced: `dropped` is the
   sixth value, and the folder moves to `trash/` rather than out of the
   vault, so a restart is a status change and a move back.
 - Material had two values (`ignored`, `promoted`) stored only in state;
@@ -154,7 +154,7 @@ with the first.
   It was removed rather than redefined.
 - The sorting session was called *triage* while it was being written. The
   word implied ranking by urgency, which is not what the four outcomes do,
-  so the session, its command and its directory are all `review`.
+  so the session, its command and its directory are all `propose`.
 - Sorting material was also called "gate 1" while the state machine used that
   name for confirming a topic. Two different things carried one name and the
   implementation followed the wrong one: `apply` created projects directly as
@@ -162,7 +162,7 @@ with the first.
   happened. Sorting is now the intake, the three gates are all on the project,
   and `apply` creates candidates.
 - Gates 2 and 3 were first written to `review/<id>-draft.md` and
-  `review/<id>-publish.md`, from when `review/` was meant to hold all three
+  `review/<id>-publish.md`, from when that directory was meant to hold all three
   gates. Once sorting stopped being a gate that left the directory with two
   unrelated uses, a gate sheet orphaned in it when its project was dropped, and
   a real collision: sorting sheets were found by the shape of their name, which

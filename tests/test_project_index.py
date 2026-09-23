@@ -7,7 +7,8 @@ import unittest
 
 from asterism.cli import main
 from asterism.config import CONFIG_NAME, initialize_vault, load_config
-from asterism.projects import ContentProject, create_project, load_projects, write_views
+from asterism.projects.index import SUPERSEDED_BASES, dead_filter
+from asterism.projects import Project, create_project, load_projects, write_views
 from asterism.projects.index import BASE_FILE, INDEX_FILE
 
 
@@ -35,7 +36,7 @@ class RegistryTest(unittest.TestCase):
             config = _config(temporary)
             create_project(config, title="Older", pillar="desk-setup", today=date(2026, 9, 10))
             newer = create_project(config, title="Newer", pillar="vibe-coding", today=date(2026, 9, 22))
-            broken = config.content_root / "2026" / "broken"
+            broken = config.projects_root / "2026" / "broken"
             broken.mkdir(parents=True)
             (broken / "01-project.md").write_text("not a card\n", encoding="utf-8")
 
@@ -61,19 +62,19 @@ class ViewsTest(unittest.TestCase):
                 config, title="Desk Lighting", pillar="desk-setup", type_="tutorial",
                 platforms=("blog", "zhihu"), today=date(2026, 9, 22),
             )
-            card = ContentProject.load(project.directory)
+            card = Project.load(project.directory)
             published = card.to_markdown().replace("published: {}", "published:\n  blog: {at: 2026-09-23, url: 'https://x.y/a'}")
             (project.directory / "01-project.md").write_text(published, encoding="utf-8")
 
             changed = write_views(config, load_projects(config))
             self.assertEqual([INDEX_FILE, BASE_FILE], changed)
-            index = (config.content_root / INDEX_FILE).read_text(encoding="utf-8")
+            index = (config.projects_root / INDEX_FILE).read_text(encoding="utf-8")
             self.assertIn("| 2026-09-22 |", index)
             self.assertIn("desk-setup", index)
             self.assertIn("blog +, zhihu -", index)
-            self.assertIn("[[content/2026/2026-09-22-Desk Lighting/01-project|Desk Lighting]]", index)
+            self.assertIn("[[projects/2026/2026-09-22-Desk Lighting/01-project|Desk Lighting]]", index)
 
-            base = config.content_root / BASE_FILE
+            base = config.projects_root / BASE_FILE
             base.write_text("views: []\n", encoding="utf-8")
             self.assertEqual([], write_views(config, load_projects(config)))
             self.assertEqual("views: []\n", base.read_text(encoding="utf-8"))  # an edited view is kept
@@ -82,7 +83,89 @@ class ViewsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             config = _config(temporary)
             self.assertEqual([], write_views(config, load_projects(config)))
-            self.assertFalse(config.content_root.exists())
+            self.assertFalse(config.projects_root.exists())
+
+
+class BaseViewTest(unittest.TestCase):
+    """The Bases view is the person's file, except while it is still ours."""
+
+    def _base(self, vault: Path) -> Path:
+        return vault / "projects" / "projects.base"
+
+    def test_the_filter_matches_a_numbered_card(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            vault = config.vault
+            create_project(config, title="Desk Lighting", today=date(2026, 9, 22))
+            write_views(config, load_projects(config))
+            text = self._base(vault).read_text(encoding="utf-8")
+            self.assertIn('file.basename.endsWith("project")', text)
+            self.assertNotIn('file.name.endsWith', text)  # file.name keeps the .md
+            self.assertNotIn("inFolder", text)  # the Obsidian vault root is not ours to assume
+
+    def test_a_view_of_what_is_waiting_uses_the_real_statuses(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            vault = config.vault
+            create_project(config, title="Desk Lighting", today=date(2026, 9, 22))
+            write_views(config, load_projects(config))
+            text = self._base(vault).read_text(encoding="utf-8")
+            self.assertIn('note.status != "dropped"', text)
+            self.assertNotIn("archived", text)  # not one of the statuses
+
+    def test_a_base_left_exactly_as_asterism_wrote_it_is_repaired(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            vault = config.vault
+            base = self._base(vault)
+            base.parent.mkdir(parents=True, exist_ok=True)
+            base.write_text(SUPERSEDED_BASES[0], encoding="utf-8")
+            write_views(config, load_projects(config))
+            self.assertIn('file.basename.endsWith("project")', base.read_text(encoding="utf-8"))
+
+    def test_every_superseded_version_is_repaired(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            base = self._base(config.vault)
+            base.parent.mkdir(parents=True, exist_ok=True)
+            for superseded in SUPERSEDED_BASES:
+                base.write_text(superseded, encoding="utf-8")
+                write_views(config, load_projects(config))
+                self.assertIn(
+                    'file.basename.endsWith("project")', base.read_text(encoding="utf-8")
+                )
+
+    def test_a_filter_that_cannot_match_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            base = self._base(config.vault)
+            base.parent.mkdir(parents=True, exist_ok=True)
+            # what Obsidian leaves behind after it rewrites one of ours
+            base.write_text(
+                "filters:\n  and:\n"
+                '    - file.name.endsWith("project")\n'
+                "views:\n  - type: table\n    name: All\n    order:\n      - title\n",
+                encoding="utf-8",
+            )
+            self.assertEqual("file.name.endsWith(", dead_filter(base))
+            write_views(config, load_projects(config))
+            self.assertIn("file.name.endsWith", base.read_text(encoding="utf-8"))  # still theirs
+
+            code, out, _err = _run("doctor", "--vault", str(config.vault), "--source", "markdown")
+            self.assertEqual(1, code)
+            self.assertIn("projects.base filter", out)
+            self.assertIn("matches nothing", out)
+
+    def test_a_base_edited_in_obsidian_is_left_alone(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = _config(temporary)
+            vault = config.vault
+            base = self._base(vault)
+            base.parent.mkdir(parents=True, exist_ok=True)
+            base.write_text("views:\n  - type: cards\n    name: Mine\n", encoding="utf-8")
+            write_views(config, load_projects(config))
+            self.assertEqual("views:\n  - type: cards\n    name: Mine\n",
+                             base.read_text(encoding="utf-8"))
 
 
 class StatusAndWeekTest(unittest.TestCase):
@@ -107,7 +190,7 @@ class StatusAndWeekTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             config = _config(temporary)
             create_project(config, title="Fine", today=date(2026, 9, 22))
-            broken = config.content_root / "2026" / "broken"
+            broken = config.projects_root / "2026" / "broken"
             broken.mkdir(parents=True)
             (broken / "01-project.md").write_text("---\nid: 1\ntitle: T\nstatus: cooking\n---\n", encoding="utf-8")
             code, out, err = _run("status", "--vault", str(config.vault))
@@ -119,7 +202,7 @@ class StatusAndWeekTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             config = _config(temporary)
             project = create_project(config, title="Abandoned Idea", status="making", today=date(2026, 9, 22))
-            relative = project.directory.relative_to(config.content_root).as_posix()
+            relative = project.directory.relative_to(config.projects_root).as_posix()
 
             code, out, err = _run("drop", project.id, "--vault", str(config.vault))
             self.assertEqual(0, code, err)
@@ -127,8 +210,8 @@ class StatusAndWeekTest(unittest.TestCase):
             self.assertFalse(project.directory.exists())
             moved = config.trash_root / relative
             self.assertTrue((moved / "02-brief.md").is_file())
-            self.assertEqual("dropped", ContentProject.load(moved).status)
-            self.assertFalse((config.content_root / "2026").exists())  # the empty year folder is pruned
+            self.assertEqual("dropped", Project.load(moved).status)
+            self.assertFalse((config.projects_root / "2026").exists())  # the empty year folder is pruned
 
             self.assertEqual((), load_projects(config).projects)
             self.assertEqual(1, len(load_projects(config, include_dropped=True).projects))
@@ -137,9 +220,9 @@ class StatusAndWeekTest(unittest.TestCase):
 
             code, out, err = _run("restore", project.id, "--vault", str(config.vault))
             self.assertEqual(0, code, err)
-            back = config.content_root / relative
+            back = config.projects_root / relative
             self.assertTrue((back / "02-brief.md").is_file())
-            self.assertEqual("candidate", ContentProject.load(back).status)
+            self.assertEqual("candidate", Project.load(back).status)
             self.assertFalse(config.trash_root.joinpath(relative).exists())
 
     def test_dropping_an_unknown_project_is_reported(self) -> None:

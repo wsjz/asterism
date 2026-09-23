@@ -9,21 +9,24 @@ promise and confirm with those. Nothing downstream runs until one is chosen._
 
 ## Core question
 
+_What problem does this piece solve for the reader?_
+
 ## Audience
 
-## One-sentence conclusion
-
-## Key points
+_Who is it written for, and what do they already know?_
 
 ## Evidence or demo
 
-## Shots to record
+_The example, result or scene that makes the point; without one, the piece is
+an opinion._
 
-## Code and screenshots to produce
+## Outline
 
-## References
+_The sections the piece will have, one per line. `asterism draft` copies these
+and nothing else, because the headings above are for planning and no finished
+piece has a section called "Audience"._
 
-## Short pieces to spin off
+-
 
 ## Source fragments
 

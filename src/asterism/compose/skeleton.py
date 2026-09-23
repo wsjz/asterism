@@ -1,13 +1,13 @@
-"""The draft skeleton: the brief's shape with the material placed under it.
+"""The draft skeleton, and the material list it keeps up to date.
 
 The machine does not write prose. What it can do is spare the person the blank
-page: it copies the brief's headings, leaves each empty, and puts every piece
-of gathered material at the end with a link back to the note it came from. An
-agent or a person then moves quotes up under the heading they belong to.
+page: it lays out the sections the brief's outline names and lists every piece
+of gathered material under ``## Material``, each with a link back to the note.
 
-Composing again never overwrites what was written. The material section is
-refreshed and the headings that are new since last time are added; a heading
-holding prose is left exactly as it is.
+Once the file exists it belongs to the writer. Composing again only refreshes
+the material list; headings, prose and structure are never touched, because
+restructuring is the first thing writing does and an earlier version of this
+module deleted a finished draft for exactly that reason.
 """
 from __future__ import annotations
 
@@ -16,88 +16,99 @@ import re
 
 from ..config import Config
 from ..links import link_to
-from ..projects import BRIEF_FILE, ContentProject, ProjectError, find_artifact
+from ..projects import BRIEF_FILE, Project, ProjectError, find_artifact
 from ..rendering import parse_front_matter
 from ..vault import atomic_write
 
 
 DRAFT_FILE = "draft.md"
 MATERIAL_HEADING = "## Material"
-# the brief's own scaffolding, which a draft does not repeat
-SKIPPED_HEADINGS = ("Candidate angles", "Source fragments")
+OUTLINE_HEADING = "## Outline"
 _HEADING = re.compile(r"^##\s+(?P<name>.+?)\s*$")
+_BULLET = re.compile(r"^\s*[-*]\s+(?P<name>.+?)\s*$")
 
 
-def draft_path(config: Config, project: ContentProject) -> Path:
+def draft_path(config: Config, project: Project) -> Path:
     if project.directory is None:
         raise ProjectError(f"project {project.id} was not loaded from a directory")
     return find_artifact(config.project, project.directory, DRAFT_FILE)
 
 
-def brief_headings(config: Config, project: ContentProject) -> list[str]:
-    """The brief's section names, minus the ones that belong to the brief alone."""
+def brief_headings(config: Config, project: Project) -> list[str]:
+    """The sections the brief's outline asks for, in order.
+
+    Only the outline is copied. The brief's other headings are prompts for
+    planning — "Audience", "Evidence or demo" — and a finished piece has no
+    section by those names.
+    """
     brief = find_artifact(config.project, project.directory, BRIEF_FILE)
     try:
         text = brief.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
-    found = []
+    found: list[str] = []
+    inside = False
     for raw in text.splitlines():
-        match = _HEADING.match(raw)
-        if match and match.group("name") not in SKIPPED_HEADINGS:
-            found.append(match.group("name"))
+        if raw.strip() == OUTLINE_HEADING:
+            inside = True
+            continue
+        if inside and _HEADING.match(raw):
+            break
+        bullet = _BULLET.match(raw) if inside else None
+        if bullet and not bullet.group("name").startswith("_"):
+            found.append(bullet.group("name"))
     return found
 
 
-def compose_draft(config: Config, project: ContentProject) -> tuple[Path, list[str]]:
-    """Write or refresh ``draft.md``; return its path and the headings it now has."""
+def compose_draft(config: Config, project: Project) -> tuple[Path, list[str], bool]:
+    """Write the skeleton, or refresh an existing draft's material list.
+
+    Returns the path, the sections the draft has, and whether it was created.
+    """
     if project.status not in ("making", "ready"):
         raise ProjectError(
             f"{project.id} is {project.status!r}; confirm it first with `asterism confirm {project.id}`"
         )
     target = draft_path(config, project)
-    headings = brief_headings(config, project)
-    existing = _existing_sections(target)
+    if target.is_file():
+        headings = _refresh_material(config, project, target)
+        return target, headings, False
 
     out: list[str] = [f"# {project.title}", ""]
     if project.promise:
         out += [f"_{project.promise}_", ""]
+    headings = brief_headings(config, project)
     for heading in headings:
-        out.append(f"## {heading}")
-        out.append("")
-        body = existing.get(heading, "").strip()
-        if body:
-            out.append(body)
-            out.append("")
-    out.append(MATERIAL_HEADING)
-    out.append("")
-    out.extend(_material(config, project, target))
+        out += [f"## {heading}", ""]
+    out += [MATERIAL_HEADING, ""]
+    out += _material(config, project, target)
     atomic_write(target, "\n".join(out).rstrip() + "\n")
-    return target, headings
+    return target, headings, True
 
 
-def _existing_sections(target: Path) -> dict[str, str]:
-    """What the person has already written, by heading, so it is never lost."""
+def _refresh_material(config: Config, project: Project, target: Path) -> list[str]:
+    """Replace the material list and nothing else; report the draft's own sections."""
+    text = target.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    headings = [
+        match.group("name")
+        for line in lines
+        if (match := _HEADING.match(line)) and line.strip() != MATERIAL_HEADING
+    ]
+    material = _material(config, project, target)
     try:
-        text = target.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return {}
-    sections: dict[str, list[str]] = {}
-    current: str | None = None
-    for raw in text.splitlines():
-        match = _HEADING.match(raw)
-        if match:
-            current = match.group("name")
-            sections.setdefault(current, [])
-            continue
-        if current is not None:
-            sections[current].append(raw)
-    sections.pop(MATERIAL_HEADING.removeprefix("## "), None)
-    return {name: "\n".join(lines).strip() for name, lines in sections.items()}
+        start = next(i for i, line in enumerate(lines) if line.strip() == MATERIAL_HEADING)
+    except StopIteration:
+        atomic_write(target, text.rstrip() + "\n\n" + "\n".join([MATERIAL_HEADING, "", *material]) + "\n")
+        return headings
+    end = next((i for i in range(start + 1, len(lines)) if _HEADING.match(lines[i])), len(lines))
+    replaced = lines[:start] + [MATERIAL_HEADING, "", *material, ""] + lines[end:]
+    atomic_write(target, "\n".join(replaced).rstrip() + "\n")
+    return headings
 
 
-def _material(config: Config, project: ContentProject, draft: Path) -> list[str]:
-    """Every gathered note as one line, newest last, each linking back.
+def _material(config: Config, project: Project, draft: Path) -> list[str]:
+    """Every gathered note as one line, oldest first, each linking back.
 
     The quotes themselves stay in the brief; repeating them here would make the
     draft a second copy of the archive instead of a place to write.

@@ -1,6 +1,7 @@
 import contextlib
 import io
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -77,9 +78,15 @@ class SyncCommandTest(unittest.TestCase):
     def test_commit_without_repository_is_reported_not_fatal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
+            shutil.rmtree(vault / ".git")  # a vault someone chose not to version
             code, out, _ = _run("sync", "--vault", str(vault), "--source", "flomo", "--commit", "--no-digest")
             self.assertEqual(0, code)
             self.assertIn("not a Git repository", out)
+
+    def test_a_new_vault_is_a_repository_so_the_writing_has_a_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = _vault(temporary)
+            self.assertTrue((vault / ".git").is_dir())
 
 
 if __name__ == "__main__":

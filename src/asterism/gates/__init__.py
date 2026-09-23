@@ -7,7 +7,7 @@ from .project import (
     write_draft_gate,
     write_publish_gate,
 )
-from .review import (
+from .picks import (
     SECTIONS,
     Line,
     Sheet,

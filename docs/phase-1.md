@@ -1,6 +1,6 @@
 # Phase 1 plan — Collection
 
-Scope and "done" criteria come from [the roadmap](roadmap.md#phase-1--collection-current).
+Scope and "done" criteria come from [the roadmap](roadmap.md#phase-1--collection).
 This document turns them into ordered, PR-sized steps. Each step keeps the
 test suite green (`PYTHONPATH=src python3 -m unittest discover -s tests`,
 `python3 -m compileall -q src tests`), touches only the files listed, and is
@@ -87,7 +87,7 @@ a TOML file and compare; init writes YAML.
 
 Design:
 
-- `vault.py`: layout constants (`notes`, `digest`, `state`, `logs`,
+- `vault.py`: layout constants (`notes`, `digest`, `.asterism/state`,
   `archive`, `inbox`), `normalize_vault`, `validated_target`, `atomic_write`
   moved from `pipeline.py` and `config.py`.
 - `normalize/` package of pure functions with no Asterism imports:
@@ -135,7 +135,7 @@ Files: `models.py`, `rendering.py`, all five adapters, `docs/sources.md`,
 Design: each adapter calls `normalize.titles.derive_title(native, body, url)`
 instead of its own logic. Filenames are already stable because
 `relative_path` is stored in state, so the front matter title may follow the
-source without renaming files. Mode B (Phase 5) may only fill an empty
+source without renaming files. An enricher may only fill an empty
 title.
 
 Files: the five adapters, `tests/test_normalize.py` cases for timestamps,
@@ -188,7 +188,7 @@ Design:
 
 - Configuration block `digest` exactly as in the roadmap: `timezone`,
   `after_sync`, `excerpt_chars`, and per level `enabled`, `run_on`,
-  `include_*`, `archive_*`, and (ignored in mode A)
+  `include_*`, `archive_*`, and (ignored without an enricher)
   `llm`.
 - `digest/periods.py`: pure functions that, given a date and the
   configuration, return the period containing it and the list of periods

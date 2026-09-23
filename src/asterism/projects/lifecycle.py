@@ -13,26 +13,26 @@ import shutil
 
 from ..config import Config
 from ..vault import atomic_write, validated_target
-from .model import PROJECT_FILE, ContentProject, ProjectError
+from .model import PROJECT_FILE, Project, ProjectError
 from .paths import unique_directory
 from .stages import find_artifact
 
 
-def drop_project(config: Config, project: ContentProject) -> Path:
+def drop_project(config: Config, project: Project) -> Path:
     """Mark a project dropped and move its folder under ``trash/``."""
     if project.is_dropped:
         raise ProjectError(f"{project.id} is already dropped")
-    return _move(config, project, "dropped", config.content_root, config.trash_root)
+    return _move(config, project, "dropped", config.projects_root, config.trash_root)
 
 
-def restore_project(config: Config, project: ContentProject) -> Path:
+def restore_project(config: Config, project: Project) -> Path:
     """Bring a dropped project back as a candidate."""
     if not project.is_dropped:
         raise ProjectError(f"{project.id} is not dropped")
-    return _move(config, project, "candidate", config.trash_root, config.content_root)
+    return _move(config, project, "candidate", config.trash_root, config.projects_root)
 
 
-def _move(config: Config, project: ContentProject, status: str, source_root: Path, target_root: Path) -> Path:
+def _move(config: Config, project: Project, status: str, source_root: Path, target_root: Path) -> Path:
     directory = project.directory
     if directory is None:
         raise ProjectError(f"project {project.id} was not loaded from a directory")

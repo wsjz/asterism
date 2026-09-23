@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 
@@ -22,9 +23,72 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(created, loaded)
             self.assertTrue((vault / CONFIG_NAME).is_file())
             self.assertTrue((vault / "notes").is_dir())
-            self.assertTrue((vault / "state" / ".gitkeep").is_file())
-            self.assertTrue((vault / "logs" / ".gitkeep").is_file())
-            self.assertIn("state/*", (vault / ".gitignore").read_text())
+            self.assertTrue((vault / ".asterism" / "state").is_dir())
+            self.assertFalse((vault / "logs").exists())  # nothing ever wrote there
+            self.assertIn(".asterism/", (vault / ".gitignore").read_text())
+
+    def test_a_vault_with_state_where_it_used_to_be_keeps_using_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            legacy = vault / "state"
+            legacy.mkdir()
+            (legacy / "manifest.json").write_text("{}", encoding="utf-8")
+            shutil.rmtree(vault / ".asterism")
+            config = load_config(vault)
+            self.assertEqual(config.vault / "state", config.state_dir)
+
+    def test_settings_a_person_writes_stay_visible_and_together(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            config = load_config(vault)
+            self.assertEqual(config.vault / "settings" / "templates", config.templates_root)
+            self.assertEqual(config.vault / "settings" / "platforms", config.platforms_root)
+
+    def test_a_vault_with_settings_under_config_keeps_them(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            (vault / "config" / "templates").mkdir(parents=True)
+            config = load_config(vault)
+            self.assertEqual(config.vault / "config" / "templates", config.templates_root)
+
+    def test_a_vault_with_templates_where_they_used_to_be_keeps_them(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            (vault / "templates").mkdir()
+            (vault / "platforms").mkdir()
+            config = load_config(vault)
+            self.assertEqual(config.vault / "templates", config.templates_root)
+            self.assertEqual(config.vault / "platforms", config.platforms_root)
+
+    def test_a_vault_with_the_older_directory_names_keeps_them(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            (vault / "content").mkdir()
+            (vault / "review").mkdir()
+            config = load_config(vault)
+            self.assertEqual(config.vault / "content", config.projects_root)
+            self.assertEqual(config.vault / "review", config.picks_root)
+
+    def test_the_older_configuration_block_is_still_read(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            (vault / CONFIG_NAME).write_text(
+                "state:\n  backend: file\nreview:\n  every: 3\n", encoding="utf-8"
+            )
+            self.assertEqual(3, load_config(vault).picks.every)
+
+    def test_a_new_vault_explains_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            vault = Path(temporary) / "vault"
+            initialize_vault(vault, "file")
+            readme = (vault / "README.md").read_text(encoding="utf-8")
+            self.assertIn("sources ──► notes/ ──► picks/ ──► projects/", readme)
 
     def test_rejects_root_as_vault(self) -> None:
         with self.assertRaises(ValueError):

@@ -33,6 +33,20 @@ class _Placed:
     updated_day: date | None
 
 
+def _without_repeated_title(body: str, title: str | None) -> str:
+    """Drop a leading ``# Title`` that repeats the link above it.
+
+    A digest entry already shows the item's title as the link, so the note's own
+    first heading says it a second time and pushes the content down a line.
+    """
+    if not title:
+        return body
+    lines = body.splitlines()
+    if lines and lines[0].lstrip("# ").strip() == title.strip() and lines[0].startswith("#"):
+        return "\n".join(lines[1:]).lstrip("\n")
+    return body
+
+
 class DigestBuilder:
     def __init__(self, config: Config, state: StateBackend, *, now: datetime | None = None) -> None:
         self.config = config
@@ -246,7 +260,7 @@ class DigestBuilder:
             _, body = parse_front_matter(path.read_text(encoding="utf-8"))
         except (OSError, ValueError, UnicodeDecodeError):
             return ""
-        body = body.strip()
+        body = _without_repeated_title(body.strip(), item.title)
         limit = self.config.digest.excerpt_chars
         if len(body) <= limit:
             return body

@@ -6,16 +6,17 @@ Asterism is a local-first, Git-native content production pipeline for a single
 creator. It collects notes and captures from the tools you already use,
 normalizes them into portable Markdown, rolls them up into daily, weekly, and
 monthly digests, and keeps local state so repeated runs only rewrite changed
-content. Later phases turn those digests into content projects, drafts,
-platform versions, and published pieces, with a person involved only at a few
-decision gates and with an LLM as an optional accelerator, never a dependency.
-See [the roadmap](docs/roadmap.md) for the destination and the current phase.
+content. From there it carries the material through content projects, drafts,
+platform versions and a recorded publication, with a person involved only at
+three decision gates and with an LLM as an optional accelerator, never a
+dependency. See [the roadmap](docs/roadmap.md) for the destination and the
+current phase.
 
 The code repository and the private content vault are intentionally separate:
 
 ```text
 asterism/          public application source
-my-notes-vault/    private Markdown, state, and logs
+my-notes-vault/    private Markdown, its state, and its history
 ```
 
 The repository also contains a `notes/` skeleton that shows
@@ -51,14 +52,35 @@ Phase 2, content projects, adds:
 - a content project per piece: a folder with a `project.md` card in YAML front
   matter that Obsidian's Properties panel edits, and a `brief.md` from a
   per-pillar template;
-- `new`, `status`, and `week`, plus a regenerated `content/INDEX.md` and a
+- `new`, `status`, and `week`, plus a regenerated `projects/INDEX.md` and a
   seeded Obsidian Bases view;
-- the first decision gate: `review` writes a sheet of everything that has no
+- the first decision gate: `propose` writes a sheet of everything that has no
   outcome yet, one heading per outcome, and `apply` records where each line
   ended up and turns the `used` ones into projects, so nothing is asked about
   twice.
 
-Drafts, publishing, and optional LLM enhancement come in later phases.
+Phase 3, from draft to a recorded publication, adds:
+
+- `confirm` to choose a candidate's angle, and `gather` to add material already
+  filed by path and date window;
+- `draft`, a skeleton from the brief's outline with the material linked under
+  it, never rewritten once the writing has started;
+- `check` and `accept` (gate 2), `adapt` into one export per platform with the
+  platform's own rules inline, `release` and `publish` (gate 3);
+- `find`, one entry per note with its date and what became of it, and
+  `snapshot`, a Git save point for the vault.
+
+Where things stand:
+
+- **Implemented and used for real:** collection, digests, sorting, projects.
+  Phases 1 and 2 have been run on a real vault for weeks.
+- **Implemented, verified once:** the phase 3 flow has carried one real piece
+  from a sorting sheet to a recorded publication. It has not yet been used for a
+  week of writing, which is the roadmap's bar for calling a phase finished.
+- **Not implemented:** work-log adapters, the `assets.md` media manifest,
+  pushing to the blog, and metrics and comments flowing back as material.
+  `adapt` copies the prose under the platform's rules for a person or an agent
+  to rewrite; `publish` records where a piece went and never pushes anywhere.
 
 Every project field lives in its card in the vault, so the pipeline runs
 complete without any external service. A Notion board, a NAS, and a language
@@ -113,7 +135,7 @@ Apple Notes   flomo export   Cubox CLI   Markdown dirs   Notion API   opencli
 Commands: `init`, `doctor`, `sync [--commit] [--dry-run]`, `digest`,
 `missing`, `migrate-config`.
 
-### Phase 2 — sorting and content projects, `asterism review` then `apply`
+### Phase 2 — sorting and content projects, `asterism propose` then `apply`
 
 Collection never decides anything. Phase 2 gives every collected item an
 outcome and turns the chosen ones into content projects. The person appears
@@ -128,8 +150,9 @@ once, in the middle.
                   that still hold undecided items, coarsest first
                                  |
                   enrich/classify  pillar by rule, never guessed
+                  threads: a heading repeated across notes, counted
                                  |
-                  review/<date>.md      <-- the person moves lines
+                  picks/<date>.md      <-- the person moves lines
                   sections: used | later | reference | dropped | undecided
                   under used, a `### topic` gathers the lines of one piece
                                  |
@@ -138,36 +161,40 @@ once, in the middle.
         +------------------------+------------------------+
         |                                                 |
   state/assignments                              projects/scaffold
-  later | reference | used | dropped             content/<year>/<date>-<title>/
+  later | reference | used | dropped             projects/<year>/<date>-<title>/
                                                    01-project.md  the card, YAML front matter
                                                    02-brief.md    from the pillar's template,
                                                                   with the source quoted in it
                                                  (names carry the production order; set
                                                   project.numbered: false to drop them)
-                                                 content/INDEX.md, projects.base
+                                                 projects/INDEX.md, projects.base
                                                  trash/  projects set aside
 ```
 
-Commands: `review [--since]`, `apply`, `confirm`, `gather`, `material`, `new`,
-`status`, `week`, `drop`, `restore`.
+Commands: `propose [--since] [--now]`, `apply`, `confirm`, `gather`, `material`, `new`,
+`set`, `status`, `week`, `find`, `snapshot`, `drop`, `restore`.
 
 ### Phase 3 — the rest of the flow, `draft` to `publish`
 
 A confirmed project is carried to a recorded publication by commands alone.
 
 ```text
-   content/<year>/<date>-<title>/
+   projects/<year>/<date>-<title>/
      01-project.md  02-brief.md    gather  already-filed material, by path and window
              |                             (an item's outcome never changes)
         `asterism draft`
              |
-     03-draft.md  the brief's headings, empty, the material listed under `## Material`
-             |                       <-- the person writes the prose
-        `asterism check`   -> 04-check.md            GATE 2: what the checks found
+     03-draft.md  the sections the brief's `## Outline` names, the gathered
+             |       material under `## Material`, nothing else
+             |       <-- the person writes the prose; composing again only
+             |           refreshes the material list and never touches it
+        `asterism check`   -> 04-check.md            GATE 2: what the checks found,
+             |                                        how much material the piece uses,
              |                                        plus three questions to tick
         `asterism accept`  -> making becomes ready
              |
-        `asterism adapt`   -> 05-exports/<platform>.md  from platforms/<platform>.md rules
+        `asterism adapt`   -> 05-exports/<platform>.md  carrying settings/platforms/<platform>.md
+             |                                        inline, for you to rewrite against
              |                                        an edited export is never overwritten
         `asterism release` -> 06-release.md          GATE 3: the exports and three questions
              |
@@ -177,18 +204,52 @@ A confirmed project is carried to a recorded publication by commands alone.
 Commands: `draft`, `check`, `accept`, `adapt`, `release`, `publish [--url
 platform=URL]`. Nothing is pushed anywhere: publishing records what went out.
 
-### Phase 4 and later — planned
+### What is left
 
-Phase 4 brings metrics and comments back as new material and adds the
-unattended `run` orchestrator; phase 5 adds an optional language model over the
-deterministic artifacts. See [the roadmap](docs/roadmap.md) for the scope and
-the architecture at the end of each one.
+There is no phase 4. An orchestrator that advanced every project to its next
+gate, and a package of language-model enhancers, were both planned and both
+dissolved by the decision that **the agent lives outside Asterism and drives it
+through the CLI**: the agent is the orchestrator, and it does the enhancing
+through the same commands a person uses. The pipeline still runs with no model
+at all.
+
+What remains is a short list rather than a phase, in the order it is likely to
+matter — see [the roadmap](docs/roadmap.md):
 
 ```text
-phase 3+  sources/worklog             -> git commits and coding sessions as material
-phase 4   feedback/ + scheduler/      -> content/<project>/review.md, new material
-phase 5   llm/                        -> the same artifacts, enhanced, off by default
+threads without structure   a folder of saved articles has no repeated headings;
+                            the untried signals are its folder and its domain
+deliver/blog_git            one push, for the one platform with an interface
+sources/worklog + assets.md git commits and coding sessions; a media manifest
+feedback/                   metrics and comments, once something has been published
 ```
+
+### Writing with it
+
+Two questions come up constantly while writing, and both are one lookup:
+
+```bash
+asterism find "RANGE_COMPARE" --vault V            # when did I first write this down?
+asterism find "percent_of_total" --vault V --in content   # have I published this already?
+```
+
+The answer is one entry per note: the day it was written, what became of it
+(`used -> 2026-001`, `reference`, nothing yet), and the lines that matched.
+`--in notes` searches what was collected, `--in content` the drafts and exports
+you wrote, `--in digest` the rollups, and the default searches the first two.
+Briefs are left out on purpose: they quote the material, so searching them
+returns the notes a second time. Front matter is left out too, so a search
+for a tag finds the prose and not every header that carries it; `--meta`
+searches the headers as well.
+
+A vault that is a Git repository gets a save point on demand:
+
+```bash
+asterism snapshot --vault V -m "before rewriting the middle"
+```
+
+It commits everything the vault tracks — the writing as much as the notes —
+and never pushes. `sync --commit` does the same after a collection run.
 
 ### Driving it with an agent
 
@@ -227,6 +288,30 @@ python3 -m venv .venv
 
 ## Quick start
 
+### The first ten minutes
+
+With a few notes exported from one tool, this goes from nothing to a project
+you can start writing in:
+
+```bash
+asterism init ~/Vault --state-backend file          # a private vault, made a Git repository
+# point one source at your notes in ~/Vault/asterism.yaml, for example
+#   sources: { markdown: { roots: [/path/to/your/notes] } }
+asterism sync --vault ~/Vault                       # notes/<source>/origin/, plus digests
+asterism propose --vault ~/Vault --now              # picks/<date>.md, today's notes included
+# in the sheet, move the lines of one piece under `## II. used`, beneath a
+# `### topic` heading of your own, then
+asterism apply --vault ~/Vault                      # the topic becomes a candidate project
+asterism confirm <id> --vault ~/Vault --angle 1     # gate 1: this is the piece
+asterism draft <id> --vault ~/Vault                 # 03-draft.md, its sections from the brief's outline
+```
+
+Without `--now`, `propose` offers only periods that have ended, which is the
+right rhythm once you sort every few days; the first day, it would offer
+nothing.
+
+### Setting up a vault
+
 Create a private content vault outside this repository:
 
 ```bash
@@ -240,9 +325,15 @@ JSON file or a local SQLite database. It creates this layout:
 AsterismVault/
   asterism.yaml
   notes/
-  state/
-  logs/
+  .asterism/state/     bookkeeping; a dot keeps it out of Obsidian's file tree
 ```
+
+It is also made a Git repository, unless the folder is already inside one, so
+the writing has a history from the first day. Nothing is ever pushed. The rest
+of the top level appears only once there is something in it: `projects/` and
+`picks/` with the first round of sorting, `settings/templates/` and
+`settings/platforms/` with the first project, `trash/` when a project is set
+aside.
 
 Check the configuration and macOS integration:
 
@@ -407,13 +498,14 @@ filesystem, and shows which archive switches are masked.
 
 ## Content projects
 
-A project is a folder under `content/` holding the card and the brief for one
-piece. The session is one file: `review` writes a sheet of what has no outcome
+A project is a folder under `projects/` holding the card and the brief for one
+piece. The session is one file: `propose` writes a sheet of what has no outcome
 yet, you move each line under the outcome it deserves, and `apply` records
 them.
 
 ```bash
-asterism review --vault ~/Documents/AsterismVault             # write review/<date>.md
+asterism propose --vault ~/Documents/AsterismVault             # write picks/<date>.md
+asterism propose --vault ~/Documents/AsterismVault --now       # include what was collected today
 # move lines under used / later / reference / dropped; under used, gather the
 # lines of one piece beneath a `### topic` heading, then
 asterism apply --vault ~/Documents/AsterismVault              # each topic becomes one project
@@ -424,7 +516,9 @@ asterism new "Desk lighting" --vault ~/Documents/AsterismVault --pillar desk-set
 
 Pillars decide how collected material is classified and which brief template
 a new project starts from; material matching no pillar carries no pillar
-rather than a guessed one:
+rather than a guessed one. Write each pillar's aliases in the language the
+material uses — they are matched against tags, folder names and the topic
+headings you write, never against a translation of them:
 
 ```yaml
 content:
@@ -443,7 +537,7 @@ back as a candidate. The five state machines the pipeline runs on are defined
 in [the state model](docs/state-model.md).
 
 Templates are seeded into the vault the first time they are used
-(`templates/project.md`, `templates/brief-<pillar>.md`), so editing them
+(`settings/templates/project.md`, `settings/templates/brief-<name>.md`), so editing them
 changes every later project. Status is yours: the machine sets it when it
 creates a project and reads it afterwards, so moving a piece forward is an
 edit in Obsidian.
@@ -472,7 +566,7 @@ For deliberate local development, this repository includes a credential-free
 # Remove --dry-run only when you intend to write private test output to notes/.
 ```
 
-The generated notes, state, and logs are ignored by Git. The source-specific
+The generated notes and state are ignored by Git. The source-specific
 README files remain tracked.
 
 To avoid an interactive prompt during initialization:
@@ -502,8 +596,8 @@ does not attempt to bypass platform permissions.
 
 ## Roadmap
 
-Asterism is being built in phases. The current phase makes collection reliable
-and incremental; later phases add content projects, human decision gates,
-composition, delivery, feedback, and optional LLM enhancement. See
+Asterism is being built in phases. Phases 1 to 3, from collection to a recorded
+publication, are implemented; what remains is feedback flowing back as material,
+an unattended orchestrator, and optional LLM enhancement. See
 [the roadmap](docs/roadmap.md) for the destination, the scope of each phase,
 and what the architecture looks like at the end of each one.

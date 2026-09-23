@@ -7,6 +7,7 @@ guessed pillar is worse than an empty one the person fills in.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from ..config import Config, Pillar
 from ..models import ItemState
@@ -39,3 +40,26 @@ def classify(pillars: tuple[Pillar, ...], tags: tuple[str, ...], parent: str | N
 def classify_item(config: Config, item: ItemState) -> str | None:
     tags, parent = item_facets(config.vault, item.relative_path)
     return classify(config.content.pillars, tags, parent)
+
+
+def classify_text(pillars: tuple[Pillar, ...], text: str) -> str | None:
+    """The first pillar whose alias appears in a line the person wrote.
+
+    This is for a topic heading — "CLI 设计" — where the aliases cannot be whole
+    segments of anything. It is still not a guess: the alias is one the person
+    configured, and it has to be there in full. An alias written in ASCII must
+    match a whole word, so ``cli`` does not claim ``client``; one with other
+    scripts matches anywhere, because they are written without word breaks.
+    """
+    if not text.strip():
+        return None
+    for pillar in pillars:
+        for alias in pillar.tags:
+            if not alias.strip():
+                continue
+            if alias.isascii():
+                if re.search(rf"\b{re.escape(alias)}\b", text, re.IGNORECASE):
+                    return pillar.key
+            elif alias in text:
+                return pillar.key
+    return None

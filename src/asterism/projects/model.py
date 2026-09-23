@@ -95,7 +95,7 @@ def split_front_matter(text: str) -> tuple[str, str]:
 
 
 @dataclass(frozen=True, slots=True)
-class ContentProject:
+class Project:
     id: str
     title: str
     status: str = "candidate"
@@ -136,7 +136,7 @@ class ContentProject:
     # --- reading -------------------------------------------------------------
 
     @classmethod
-    def from_markdown(cls, text: str, *, directory: Path | None = None) -> ContentProject:
+    def from_markdown(cls, text: str, *, directory: Path | None = None) -> Project:
         raw, body = split_front_matter(text)
         try:
             loaded = yaml.safe_load(raw) or {}
@@ -169,7 +169,7 @@ class ContentProject:
         )
 
     @classmethod
-    def load(cls, directory: Path) -> ContentProject:
+    def load(cls, directory: Path) -> Project:
         card = card_in(directory)
         try:
             text = card.read_text(encoding="utf-8")
@@ -210,7 +210,7 @@ class ContentProject:
         body = self.body.strip()
         return f"---\n{rendered}---\n\n{body}\n" if body else f"---\n{rendered}---\n"
 
-    def with_body(self, body: str) -> ContentProject:
+    def with_body(self, body: str) -> Project:
         return replace(self, body=body)
 
     @property

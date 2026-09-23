@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 from ..config import Config
-from ..projects import ContentProject
+from ..projects import Project
 from .skeleton import MATERIAL_HEADING, draft_path
 
 
@@ -27,14 +27,30 @@ class Finding:
     detail: str
 
 
-def check_draft(config: Config, project: ContentProject) -> list[Finding]:
+@dataclass(frozen=True, slots=True)
+class Checked:
+    findings: tuple[Finding, ...]
+    gathered: int
+    cited: int
+
+    @property
+    def material(self) -> str:
+        """How much of what was gathered the piece actually uses."""
+        return f"{self.cited} of {self.gathered} gathered note(s) cited"
+
+
+def check_draft(config: Config, project: Project) -> Checked:
     """Everything verifiable that stands between this draft and a publication."""
     findings: list[Finding] = []
     target = draft_path(config, project)
     try:
         text = target.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return [Finding("no-draft", f"there is no draft yet; run `asterism draft {project.id}`")]
+        return Checked(
+            (Finding("no-draft", f"there is no draft yet; run `asterism draft {project.id}`"),),
+            gathered=len(project.sources),
+            cited=0,
+        )
 
     for name, body in _sections(text).items():
         if name == MATERIAL_HEADING.removeprefix("## "):
@@ -43,15 +59,23 @@ def check_draft(config: Config, project: ContentProject) -> list[Finding]:
             findings.append(Finding("empty-section", name))
 
     cited = _cited(_prose(text))
-    for relative in project.sources:
-        if relative not in cited and Path(relative).stem not in cited:
-            findings.append(Finding("uncited", relative))
+    used = [
+        relative for relative in project.sources
+        if relative in cited or Path(relative).stem in cited
+    ]
+    # Gathering a month and using a third of it is how writing works, so an
+    # unused note is not a fault. Only a piece that cites none of its material
+    # is worth stopping for.
+    if project.sources and not used:
+        findings.append(
+            Finding("uncited", "the draft links to none of its gathered material")
+        )
 
     if not project.promise:
         findings.append(Finding("no-promise", "the card has no promise"))
     if not project.platforms:
         findings.append(Finding("no-platform", "no platform is chosen on the card"))
-    return findings
+    return Checked(tuple(findings), gathered=len(project.sources), cited=len(used))
 
 
 def _sections(text: str) -> dict[str, str]:

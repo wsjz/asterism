@@ -66,7 +66,7 @@ class JsonOutputTest(unittest.TestCase):
                 ("status", "--vault", vault),
                 ("week", "--vault", vault),
                 ("material", "--vault", vault),
-                ("review", "--vault", vault),
+                ("propose", "--vault", vault),
             ):
                 code, payload = _json(*argv)
                 self.assertEqual(0, code, argv[0])
@@ -97,11 +97,11 @@ class JsonOutputTest(unittest.TestCase):
             self.assertFalse(payload["ok"])
             self.assertTrue(any("sources.markdown.roots" in hint for hint in payload["hints"]))
 
-    def test_review_reports_the_sheet_and_its_lines(self) -> None:
+    def test_propose_reports_the_sheet_and_its_lines(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = str(_vault(temporary))
-            _code, payload = _json("review", "--vault", vault)
-            self.assertTrue(payload["sheet"].startswith("review/"))
+            _code, payload = _json("propose", "--vault", vault)
+            self.assertTrue(payload["sheet"].startswith("picks/"))
             self.assertEqual(2, payload["listed"])
             self.assertEqual({"undecided"}, {line["section"] for line in payload["lines"]})
             self.assertIsNone(payload["lines"][0]["topic"])

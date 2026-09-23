@@ -16,7 +16,7 @@ content, not when its tests pass.
 
 ```text
 sources ──► notes mirror ──► enrich ──► content projects ──► compose ──► deliver
- (notes,      vault/notes/    dedupe,     vault/content/<project>/ drafts,     blog repo,
+ (notes,      vault/notes/    dedupe,     vault/projects/<project>/ drafts,     blog repo,
   work logs,                  classify,   state machine,        platform    publish
   feedback)                   rank        three human gates     versions    packages
                                                                     ▲
@@ -49,7 +49,7 @@ Design principles that hold across every phase:
 ## The agent and the AI-native contract
 
 Asterism does not contain an agent. An agent — Claude Code, a script, or the
-optional `llm/` module of Phase 5 — sits outside and drives the pipeline
+a model called by either — sits outside and drives the pipeline
 through the CLI and the vault's files. This follows the first design
 principle: files are the only interface between stages, so whatever drives
 them is interchangeable and none of it is in the state machine.
@@ -102,7 +102,7 @@ model and utilities, and adds the one adapter still missing (opencli).
    first non-empty line with list markers, leading timestamps, and bare URLs
    stripped and cut at the first sentence end or 60 characters, else the URL's
    domain and last path segment, else none; a title is fixed once stored and
-   mode B may only fill an empty one); add a
+   an enricher may only fill an empty one); add a
    source registry so `--source` resolves names to factories; give the front
    matter a `schema` version.
 2. Model: add `origin` (adapter, producer, producer_version), `url`, and
@@ -191,26 +191,25 @@ transcripts, screenshots) are also collection, but they only matter once
 content projects exist to attach them to. They arrive in Phase 3 through the
 same adapter contract.
 
-## Phase 2 — Content projects, sorting, and confirming a topic (current)
+## Phase 2 — Picks and projects
 
-**Status.** Steps 1 to 5 of [the Phase 2 plan](phase-2.md) are implemented:
-project cards, scaffolding, `new`, `status`, `week`, the index and Bases
-views, assignments in state, rule-based classification, and gate 1 through
-`review` and `apply`. The Notion management board (step 6) is left until the
-rest has been used for real.
+**Status.** Done, except the Notion board (step 6 of
+[the Phase 2 plan](phase-2.md)), which needs an integration token and a
+database and which everything else works without. Used for real: three pieces
+have come through it.
 
 **Goal.** The pipeline has its core object, the content project, and a review
 round that turns collected material into projects being made, with one
 human decision.
 
-**Scope.** `ContentProject` model and `project.md` front matter; configurable
+**Scope.** `Project` model and `project.md` front matter; configurable
 production stages (`project.stages`, see "Production stages") that decide
 the project folder layout while the status machine stays fixed; the status
 machine (`candidate → making → ready → published → retrospected`, plus
 `dropped` for a piece set aside in `trash/`, see
-[the state model](state-model.md)); `new`, `status`, `week`, `material`, `drop`, `restore`; a machine-maintained `content/INDEX.md` table (date,
+[the state model](state-model.md)); `new`, `status`, `week`, `material`, `drop`, `restore`; a machine-maintained `projects/INDEX.md` table (date,
 title, pillar, type, status, platforms) regenerated on every status change
-as a browsing view, plus a generated `content/projects.base` for Obsidian
+as a browsing view, plus a generated `projects/projects.base` for Obsidian
 Bases; an optional Notion board: a projection of the cards into a database
 whose rows join projects by content id, used as a nicer surface for planning
 and as a second place to edit the management fields. The vault owns every
@@ -228,7 +227,7 @@ front matter metadata and only shapes directories when `project.path`
 includes `{pillar}`; brief
 templates per content pillar; deterministic `enrich/` (exact and normalized
 dedupe, rule-based classification from tags and folders, ranking by fragment
-count, recency, and question density); `review` writes `review/<date>.md`,
+count, recency, and question density); `propose` writes `picks/<date>.md`,
 the gate-1 sheet, listing everything that has no outcome yet under the
 outcome a rule suggests, and `apply` records where each line ended up and
 turns the `used` ones into projects. New state table: `assignments`; projects
@@ -246,14 +245,21 @@ cli: everything in Phase 1 + review · apply · new · status · week · materia
         │
 sources/ ──► vault/notes/<source>/origin/ ──► enrich/ (dedupe · rule classify · rank) ──► state.assignments
                                                                               │
-                                   gates/review ──► vault/review/<date>.md ◄── the person sorts material (gate 1)
+                                   gates/review ──► vault/picks/<date>.md ◄── the person sorts material (gate 1)
                                    gates/apply   ──► projects/ (scaffold · state machine)
                                                           │
-                                                     vault/content/<project>/{project,brief}.md
-new vault directories: content/ · review/ · templates/brief-<pillar>.md
+                                                     vault/projects/<project>/{project,brief}.md
+new vault directories: projects/ · picks/ · settings/templates/brief-<name>.md
 ```
 
-## Phase 3 — Work logs, composition, and delivery (mode A complete)
+## Phase 3 — From a topic to a published piece
+
+**Status.** The flow is complete and has been walked three times, from an
+empty vault through to a recorded publication; see
+[the Phase 3 plan](phase-3.md) for what each of those runs changed. Three parts
+of the scope below are not built: the work-log adapters, the `assets.md`
+manifest, and `deliver/blog_git`. Until the last of those exists, `publish`
+records a publication rather than performing one.
 
 **Goal.** A piece of content goes from a project being made to a published
 blog post and ready-to-paste packages for the other platforms, using only commands
@@ -285,71 +291,48 @@ sources/notes/ + sources/worklog/ (git · coding sessions · screenshots) ──
                                                                                                                 │
                                                     compose/skeleton ──► draft.md ◄── human writes prose
                                                                              │
-                                                    compose/checks (coverage · citations · images) ──► gate 2  content/<project>/check.md
+                                                    compose/checks (coverage · citations · images) ──► gate 2  projects/<project>/check.md
                                                                              │
                                                     compose/adapt/<platform> (rules in vault/platforms/*.md) ──► exports/*.md + package
                                                                              │
-                                                    gate 3  content/<project>/release.md ──► deliver/blog_git ──► blog repository
+                                                    gate 3  projects/<project>/release.md ──► deliver/blog_git ──► blog repository
                                                                                        other platforms ──► human pastes, link recorded
 new state table: deliveries
 ```
 
-## Phase 4 — Feedback and unattended progression
+## What is left, and why it is not a phase
 
-**Goal.** The pipeline advances by itself between gates and closes the loop
-from published content back to new candidates.
+Phases 4 and 5 used to stand here: an orchestrator that advanced every project
+one step until a gate, a scheduler, and an `llm/` package of enhancers. Both
+were dissolved by a later decision — **the agent lives outside Asterism and
+drives it through the CLI** — which made most of what they contained redundant
+rather than unbuilt.
 
-**Scope.** `feedback/`: metrics and comments through opencli seven days after
-publishing, `review.md` retrospective, comments with questions becoming new
-fragments; `deliver/notion_mirror` (one-way status board) and
-`deliver/nas_manifest`; `run` orchestrator that advances every project one
-step until a gate; `scheduler/` generating a launchd job.
+| Was planned as | What happened to it |
+|---|---|
+| `run`, advancing every project to its next gate | The agent is the orchestrator. It reads `--json`, follows the skill, and stops at the gates because the gate commands refuse to move without a person's answer. |
+| `llm/enhancers`: classify, brief, draft, adapt | The agent does these through the same commands a person uses. The pipeline still runs with no model at all, which was the point of keeping them optional. |
+| `scheduler/` generating a launchd job | A plist or a cron line, not a package. It belongs in the documentation. |
+| The retrospective document | A template in `settings/templates/`, not code. |
+| `deliver/notion_mirror`, `deliver/nas_manifest` | Optional projections, built when they are wanted. |
 
-**Done when.** After publishing, the retrospective appears without any manual
-step, and the next weekly review contains candidates that originated in
-comments.
+What genuinely remains, in the order it is likely to matter:
 
-**Architecture at the end of Phase 4.**
-
-```text
-scheduler/ (launchd) ──► cli run ──► advance every project one step, stop at gates
-        │
-everything in Phase 3
-        │
-deliver/notion_mirror (one-way status board) · deliver/nas_manifest (asset list by id)
-        │
-feedback/: published + 7 days ──► opencli metrics and comments ──► vault/content/<project>/review.md
-                                              │
-                          questions in comments ──► SourceItem ──► vault/notes/feedback/ ──► enrich ──► next weekly digest
-```
-
-## Phase 5 — Optional LLM enhancement (mode B)
-
-**Goal.** Users who configure a language model get drafts instead of
-skeletons; users who do not notice no difference.
-
-**Scope.** `llm/provider` over HTTP with the standard library, credentials from
-environment variables only; enhancers for classification suggestions, brief
-prefill, draft prose from the material outline with citations, platform
-rewrites, and comment summaries; `[automation.llm]` switches, all off by
-default; a fake provider for tests; `doctor` reports the active mode.
-
-**Done when.** The same project produces a full first draft with the switch
-on and the material outline with it off, and every generated factual sentence
-cites a `SourceItem`.
-
-**Architecture at the end of Phase 5.**
-
-```text
-config [automation.llm] = false (default) | true
-        │
-llm/provider (standard-library HTTP, key from environment only)
-llm/enhancers: classify · brief · draft · adapt · review
-        │  input:  the deterministic artifact from compose, enrich, or feedback
-        │  output: an enhanced version at the same path, front matter marks enhanced_by
-        │  never part of the state machine; when off or failing, the original stands
-everything in Phase 4 unchanged
-```
+1. **Threads in material that carries no structure.** Repeated headings find
+   the threads in a work log; a folder of saved articles has none, so the sheet
+   degrades silently to a flat list — no error, just no suggestion, in exactly
+   the step that is hardest by hand. The signals left untried are deterministic:
+   the folder an item was saved into, and the domain it came from.
+2. **`deliver/blog_git`.** One `git push` for the one platform that has an
+   interface. Every other platform is, and will remain, a human pasting from a
+   package and a link recorded on the card.
+3. **Work-log adapters and `assets.md`.** Git commits and coding sessions are
+   the most direct material for technical writing; media needs a manifest
+   before there is media to track.
+4. **Feedback.** Metrics and comments seven days after publishing, questions in
+   comments becoming new material. This one waits on evidence: nothing has been
+   published yet, so there is nothing to measure and no way to tell whether the
+   loop closes.
 
 ## Digests: one tree per source, aggregated by time
 
@@ -362,7 +345,7 @@ level safe, and what makes a digest worth reading on its own. They start in Phas
 need nothing but the notes mirror, and later phases attach to them: the
 weekly digest carries gate 1 from Phase 2, projects gather material through
 the daily digests from Phase 3, the monthly digest becomes the monthly
-retrospective in Phase 4, and mode B adds an optional summary in Phase 5.
+retrospective once a piece has been published, and an enricher may add a summary.
 
 ```yaml
 digest:
@@ -385,7 +368,7 @@ digest:
     enabled: false
     run_on: 12                # month whose last day ends the period
     include_months: true
-  llm:                        # mode B only
+  llm:                        # only when an enricher writes summaries
     summary: true             # extra <period>.summary.md
     placement: separate       # separate | inline
 ```
@@ -474,7 +457,7 @@ archive:
   enabled: false                          # master switch; when off, nothing is moved or copied and archive commands only write plans
   root: /Volumes/Archive/Content          # may be a NAS mount; default <vault>/archive/, git-ignored
   mode: copy                              # copy | move, applies to digests only; project folders are always copied
-  on_publish: false                       # Phase 4: write an archive plan when a project is published
+  on_publish: false                       # write an archive plan when a project is published
   auto_execute: false                     # otherwise `asterism archive <ID> --execute`
 
 state:
@@ -493,25 +476,25 @@ into an empty local directory.
 Layout by phase, cumulative:
 
 ```text
-Phase 1   <vault>/asterism.yaml · state/ · logs/ · .gitignore
+Phase 1   <vault>/asterism.yaml · .asterism/state/ · .gitignore
           <vault>/notes/<source>/origin/<the source's own hierarchy>/<title>.md
           <vault>/notes/<source>/digest/{daily,weekly,monthly,yearly}/<year>/<label>.md
           <vault>/archive/notes/… or <archive.root>/notes/… for rolled-up lower levels when archiving is on
-Phase 2 + <vault>/review/<date>.md          the sorting sheet; gate 1 is the project card
-          <vault>/content/INDEX.md · <vault>/content/projects.base
+Phase 2 + <vault>/picks/<date>.md          one round of choosing; gate 1 is the project card
+          <vault>/projects/INDEX.md · <vault>/projects/projects.base
           <vault>/trash/<year>/<project>/   projects set aside
-          <vault>/content/<year>/<date>-<title>/{project,brief}.md
-          <vault>/templates/{project,brief-<pillar>}.md
+          <vault>/projects/<year>/<date>-<title>/{project,brief}.md
+          <vault>/settings/templates/{project,brief-<name>}.md
 Phase 3 + <vault>/notes/worklog/{git,sessions,media}/
-          <vault>/content/<year>/<date>-<slug>/{draft,assets}.md · exports/<platform>.md
-          <vault>/content/<year>/<date>-<slug>/{check,release}.md   gates 2 and 3
-          <vault>/platforms/<platform>.md
+          <vault>/projects/<year>/<date>-<slug>/{draft,assets}.md · exports/<platform>.md
+          <vault>/projects/<year>/<date>-<slug>/{check,release}.md   gates 2 and 3
+          <vault>/settings/platforms/<platform>.md
           <media_root>/<year>/<date>-<slug>/<stage dirs from project.stages; default 03-originals/{photo,video,screen-recording}, 04-project, 05-export/<platform>, 06-cover>/
           <inbox>/ (one or more)
-Phase 4 + <vault>/content/<year>/<date>-<slug>/review.md
+Later  + <vault>/projects/<year>/<date>-<slug>/07-review.md
           <vault>/notes/feedback/<platform>/
           <archive.root>/<year>/<date>-<slug>/  text and media merged into the full stage structure (default 01–07); copy only
-Phase 5   no new directories; enhanced files are marked in front matter; optional <period>.summary.md beside each digest; cache in <vault>/state/llm-cache/
+Enriched  no new directories; enhanced files are marked in front matter; optional <period>.summary.md beside each digest; cache in <vault>/.asterism/llm-cache/
 ```
 
 When `media_root` is on the NAS, Obsidian previews work through a symlink
@@ -526,7 +509,7 @@ vault directory on disk holds everything, and Obsidian can embed and play the
 files in place.
 
 ```text
-ContentVault/content/2026/2026-09-21-ai-desk-dashboard/
+ContentVault/projects/2026/2026-09-21-ai-desk-dashboard/
   project.md · brief.md · draft.md · assets.md · review.md · exports/*.md    tracked by Git
   <stage dirs from project.stages>                                         ignored by Git; defaults:
   03-originals/{photo,video,screen-recording}/                             originals
@@ -552,11 +535,11 @@ Use and archive:
 
 ```text
 sources/worklog/media  ──►  notes/worklog/media/<sha256>.md   machine index: hash, path, captured time
-                            content/<project>/assets.md       human view: ![[03-originals/photo/before.jpg]] with a role
+                            projects/<project>/assets.md       human view: ![[03-originals/photo/before.jpg]] with a role
                                    ├─► compose/adapt/xhs      images by role
                                    ├─► compose/adapt/douyin   shot list against recorded clips
                                    └─► deliver/blog_git       copies referenced images into the blog repository, resized with `sips`
-Phase 4: deliver/nas_manifest copies the whole project folder to archive.root when archiving is enabled and executed; never deletes; flags originals for cold backup
+Later: deliver/nas_manifest copies the whole project folder to archive.root when archiving is enabled and executed; never deletes; flags originals for cold backup
 ```
 
 Rules:
@@ -600,13 +583,13 @@ archive:
     min_rating: 1        # 0 archives unrated files too
 ```
 
-### Media workflow in mode A and mode B
+### Media workflow, with and without a model
 
 Efficiency comes from giving footage structure while shooting: shots follow
 the brief's shot list, files follow role naming, and the creator talks while
-working. The same six steps run in both modes; mode B adds a layer on each.
+working. The same six steps run either way; a model adds a layer on each.
 
-| Step | Mode A (deterministic) | Mode B adds |
+| Step | Deterministic | A model adds |
 |---|---|---|
 | Plan | Shot list from the pillar's brief template with suggested filename prefixes | Suggests which shots matter most based on past projects |
 | Land | Captures move from `inbox/` into the project; roles prefilled from filename conventions | A vision model assigns roles, writes descriptions and alt text, flags near-duplicate shots |
@@ -616,8 +599,8 @@ working. The same six steps run in both modes; mode B adds a layer on each.
 | Publish and review | Links and public image URLs written back to `assets.md`; NAS plan | Comments about specific shots attached to the matching `assets.md` lines to inform the next plan |
 
 Optional external tools, detected by `doctor` and never Python dependencies:
-`ffmpeg` for frames, clips, and subtitle files (usable in mode A), and a local
-whisper-class transcriber for narration (mode B). Without them the pipeline
+`ffmpeg` for frames, clips, and subtitle files (no model needed), and a local
+whisper-class transcriber for narration. Without them the pipeline
 falls back to time-point lists and hand-written narration.
 
 ## Where each tool lands
@@ -625,7 +608,7 @@ falls back to time-point lists and hand-written narration.
 | Tool | Role | Phase | Asterism does | Asterism does not |
 |---|---|---|---|---|
 | Apple Notes, flomo, Cubox | Capture | 1 | Collect incrementally | Write back |
-| Obsidian | Production and storage of Markdown; existing knowledge base as a source | 1 (source), 2 onward (editor) | Read an existing vault through the Markdown adapter; keep `content/` and `templates/` editable in Obsidian; show read-only management fields and generated views | Manage status or schedule; that is Notion's job |
+| Obsidian | Production and storage of Markdown; existing knowledge base as a source | 1 (source), 2 onward (editor) | Read an existing vault through the Markdown adapter; keep `projects/` and `templates/` editable in Obsidian; show read-only management fields and generated views | Manage status or schedule; that is Notion's job |
 | Notion | Existing pages as a source; the management board | 1 (source), 2 (board) | Read pages; own status, schedule, priority, platforms, promise, and notes for every project; receive published links, metrics, and draft links from the vault; allow gates 1 and 3 and project creation from a row | Store drafts, assets, or any content; share a field with the vault |
 | opencli | Personal bookmarks as a source; metrics and comments as feedback | 1 (source), 4 (feedback) | Run allowlisted read-only commands | Publish through browser automation by default |
 | Personal blog | Authoritative version, search entry, long-term asset | 3 (publish), 4 (feedback) | Fullest export with front matter, code, and an update log; push to a preview branch and merge on gate 3; the only fully automated publication | Deploy (the blog repository does); collect search metrics through opencli |
@@ -643,6 +626,16 @@ falls back to time-point lists and hand-written narration.
 
 ## Evolution notes
 
+- **Phases 4 and 5 were removed rather than postponed.** They described an
+  orchestrator and a package of language-model enhancers. Deciding that the
+  agent lives outside Asterism and drives it through the CLI made both
+  redundant: the agent orchestrates, and it enhances through the same commands
+  a person uses. What was left of them is listed above as work, not as a phase.
+- **The remaining phase titles were rewritten to match what exists.** Phase 2
+  was called "Content projects, sorting, and confirming a topic" and Phase 3
+  "Work logs, composition, and delivery" — three things of which only the
+  middle one was built. A phase named for an old plan makes the plan look
+  finished when it is not.
 - Collection is finished in Phase 1 and is only extended by new adapters
   afterwards; its contract (`Source.collect() -> list[SourceItem]`) does not
   change.

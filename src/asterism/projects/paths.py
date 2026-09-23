@@ -8,7 +8,7 @@ from string import Formatter
 
 from ..config import Config
 from ..rendering import clean_title_for_filename, unique_filename
-from .model import ContentProject, ProjectError, find_cards
+from .model import Project, ProjectError, find_cards
 
 
 def id_pattern(id_format: str, year: int) -> re.Pattern[str]:
@@ -40,9 +40,9 @@ def next_id(config: Config, *, today: date, pillar: str | None = None, type_: st
 
 def existing_ids(config: Config) -> list[str]:
     ids: list[str] = []
-    for card in find_cards(config.content_root):
+    for card in find_cards(config.projects_root):
         try:
-            ids.append(ContentProject.load(card.parent).id)
+            ids.append(Project.load(card.parent).id)
         except ProjectError:
             continue  # a broken card must not block creating new projects
     return ids
@@ -66,7 +66,7 @@ def render_path(config: Config, *, project_id: str, title: str, created: date, p
 
 def unique_directory(config: Config, relative: str, root: Path | None = None) -> str:
     """``relative`` or the first ``name (n)`` free inside ``root`` (``content/`` by default)."""
-    base = root if root is not None else config.content_root
+    base = root if root is not None else config.projects_root
     parent, _, name = relative.rpartition("/")
     folder = base / parent if parent else base
     taken = {entry.name for entry in folder.iterdir()} if folder.is_dir() else set()
@@ -74,7 +74,7 @@ def unique_directory(config: Config, relative: str, root: Path | None = None) ->
     return f"{parent}/{chosen}" if parent else chosen
 
 
-def project_directory(config: Config, project: ContentProject) -> Path:
+def project_directory(config: Config, project: Project) -> Path:
     if project.directory is None:
         raise ProjectError(f"project {project.id} was not loaded from a directory")
     return project.directory

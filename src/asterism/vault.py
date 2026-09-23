@@ -10,9 +10,18 @@ import tempfile
 NOTES_DIR = "notes"
 ORIGIN_DIR = "origin"  # notes/<source>/origin/ holds the collected items
 DIGEST_DIR = "digest"  # notes/<source>/digest/<level>/ holds the rollups over them
-CONTENT_DIR = "content"
-STATE_DIR = "state"
-LOGS_DIR = "logs"
+PROJECTS_DIR = "projects"  # one folder per piece, from candidate to published
+LEGACY_PROJECTS_DIR = "content"
+PICKS_DIR = "picks"  # what was chosen out of the notes, one sheet per round
+LEGACY_PICKS_DIR = "review"
+MACHINE_DIR = ".asterism"  # bookkeeping; a dot keeps it out of Obsidian's tree
+# What a person writes as Markdown to shape the output — brief templates,
+# platform rules — lives together and stays visible, because it is edited in
+# Obsidian, which calls this kind of thing settings too.
+SETTINGS_DIR = "settings"
+LEGACY_SETTINGS_DIRS = ("config",)
+STATE_DIR = f"{MACHINE_DIR}/state"
+LEGACY_STATE_DIR = "state"
 ARCHIVE_DIR = "archive"
 INBOX_DIR = "inbox"
 

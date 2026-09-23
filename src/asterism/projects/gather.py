@@ -19,7 +19,7 @@ from ..config import Config
 from ..models import ItemState
 from ..state.base import StateBackend
 from ..vault import atomic_write
-from .model import BRIEF_FILE, PROJECT_FILE, ContentProject, ProjectError
+from .model import BRIEF_FILE, PROJECT_FILE, Project, ProjectError
 from .scaffold import quote_sources
 from .stages import find_artifact
 
@@ -30,7 +30,7 @@ _HEADING = re.compile(r"^##\s+")
 
 @dataclass(frozen=True, slots=True)
 class Gathered:
-    project: ContentProject
+    project: Project
     added: tuple[str, ...]
     already: tuple[str, ...]
 
@@ -80,7 +80,7 @@ def _day(item: ItemState) -> date | None:
 def gather_into(
     config: Config,
     state: StateBackend,
-    project: ContentProject,
+    project: Project,
     *,
     prefix: str,
     since: date | None = None,
@@ -114,7 +114,7 @@ def gather_into(
     return Gathered(project=gathered, added=added, already=already)
 
 
-def _rewrite_material(config: Config, project: ContentProject, card) -> None:
+def _rewrite_material(config: Config, project: Project, card) -> None:
     """Replace the brief's material section, leaving everything written above it.
 
     The section is the brief's last one by convention, so it is replaced from

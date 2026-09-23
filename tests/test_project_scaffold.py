@@ -8,7 +8,7 @@ import unittest
 from asterism.cli import main
 from asterism.config import CONFIG_NAME, initialize_vault, load_config
 from asterism.projects import (
-    ContentProject,
+    Project,
     ProjectError,
     create_project,
     find_artifact,
@@ -41,8 +41,8 @@ class CreateProjectTest(unittest.TestCase):
                 platforms=("blog", "zhihu"), sources=("notes/flomo/origin/Idea.md",), today=date(2026, 9, 22),
             )
             self.assertEqual("2026-001", project.id)
-            self.assertEqual("2026/2026-09-22-Desktop Status Screen", project.directory.relative_to(config.content_root).as_posix())
-            card = ContentProject.load(project.directory)
+            self.assertEqual("2026/2026-09-22-Desktop Status Screen", project.directory.relative_to(config.projects_root).as_posix())
+            card = Project.load(project.directory)
             self.assertEqual(("vibe-coding", "tutorial", "blog"), (card.pillar, card.type, card.primary))
             self.assertEqual(("notes/flomo/origin/Idea.md",), card.sources)
             self.assertIn("# Desktop Status Screen", card.body)
@@ -52,7 +52,7 @@ class CreateProjectTest(unittest.TestCase):
             self.assertIn("> the note could not be read", brief)  # the note itself was never collected here
             self.assertTrue((config.templates_root / "project.md").is_file())
             # a pillar gets its own editable copy, seeded from the packaged default
-            self.assertTrue((config.templates_root / "brief-vibe-coding.md").is_file())
+            self.assertTrue((config.templates_root / "brief-tutorial.md").is_file())  # the shape, not the subject
 
     def test_ids_and_folders_never_collide(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -93,7 +93,7 @@ class CreateProjectTest(unittest.TestCase):
             vault = _vault(temporary, PILLARS + "project:\n  path: '{pillar}/{date}-{title}'\n")
             config = load_config(vault)
             project = create_project(config, title="Lighting", pillar="desk-setup", today=date(2026, 9, 22))
-            self.assertEqual("desk-setup/2026-09-22-Lighting", project.directory.relative_to(config.content_root).as_posix())
+            self.assertEqual("desk-setup/2026-09-22-Lighting", project.directory.relative_to(config.projects_root).as_posix())
             loose = create_project(config, title="Stray", today=date(2026, 9, 22))
             self.assertEqual("unsorted", loose.directory.parent.name)
 
@@ -143,9 +143,9 @@ class NewCommandTest(unittest.TestCase):
                 ])
             self.assertEqual(0, code)
             self.assertIn("Created 2026-", out.getvalue())
-            cards = list((vault / "content").rglob("01-project.md"))
+            cards = list((vault / "projects").rglob("01-project.md"))
             self.assertEqual(1, len(cards))
-            self.assertEqual("making", ContentProject.load(cards[0].parent).status)
+            self.assertEqual("making", Project.load(cards[0].parent).status)
 
     def test_reports_an_unknown_pillar_without_creating_anything(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -155,7 +155,7 @@ class NewCommandTest(unittest.TestCase):
                 code = main(["new", "T", "--vault", str(vault), "--pillar", "nope"])
             self.assertEqual(1, code)
             self.assertIn("unknown pillar", err.getvalue())
-            self.assertFalse((vault / "content").exists())
+            self.assertFalse((vault / "projects").exists())
 
 
 if __name__ == "__main__":
