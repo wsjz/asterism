@@ -24,7 +24,7 @@ CONFIG = (
     "state:\n  backend: file\n"
     "digest:\n  timezone: Asia/Shanghai\n  week: { run_on: 3 }\n"
     "content:\n  pillars: [{ key: desk-setup, tags: [desk] }]\n"
-    "review:\n"
+    "picks:\n"
     "  every: 3\n"
     "  rules:\n"
     "    - { source: flomo, parent: Chores, default: dropped, auto: true }\n"
@@ -498,26 +498,18 @@ class SheetDiscoveryTest(unittest.TestCase):
             self.assertEqual([sorting.name], found)
             self.assertEqual(sorting, latest_sheet(load_config(vault)))
 
-    def test_a_sheet_written_before_kind_existed_is_still_read(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = _vault(temporary)
-            (vault / "picks").mkdir(exist_ok=True)
-            old = vault / "picks" / "2026-09-20-101010.md"
-            old.write_text('---\nschema: 1\nstate: "open"\n---\n', encoding="utf-8")
-            self.assertEqual([old], sheets(load_config(vault)))
-
 
 class RuleConfigTest(unittest.TestCase):
     def test_a_rule_cannot_create_projects_on_its_own(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ConfigError) as raised:
-                _vault(temporary, "state:\n  backend: file\nreview:\n  rules: [{ source: flomo, default: used, auto: true }]\n")
+                _vault(temporary, "state:\n  backend: file\npicks:\n  rules: [{ source: flomo, default: used, auto: true }]\n")
             self.assertIn("making a project is a decision", str(raised.exception))
 
     def test_rejects_an_unknown_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ConfigError):
-                _vault(temporary, "state:\n  backend: file\nreview:\n  rules: [{ source: flomo, default: maybe }]\n")
+                _vault(temporary, "state:\n  backend: file\npicks:\n  rules: [{ source: flomo, default: maybe }]\n")
 
 
 if __name__ == "__main__":

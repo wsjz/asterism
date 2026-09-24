@@ -7,7 +7,7 @@ import unittest
 
 from asterism.cli import main
 from asterism.config import CONFIG_NAME, initialize_vault, load_config
-from asterism.projects.index import SUPERSEDED_BASES, dead_filter
+from asterism.projects.index import dead_filter
 from asterism.projects import Project, create_project, load_projects, write_views
 from asterism.projects.index import BASE_FILE, INDEX_FILE
 
@@ -112,28 +112,6 @@ class BaseViewTest(unittest.TestCase):
             text = self._base(vault).read_text(encoding="utf-8")
             self.assertIn('note.status != "dropped"', text)
             self.assertNotIn("archived", text)  # not one of the statuses
-
-    def test_a_base_left_exactly_as_asterism_wrote_it_is_repaired(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            config = _config(temporary)
-            vault = config.vault
-            base = self._base(vault)
-            base.parent.mkdir(parents=True, exist_ok=True)
-            base.write_text(SUPERSEDED_BASES[0], encoding="utf-8")
-            write_views(config, load_projects(config))
-            self.assertIn('file.basename.endsWith("project")', base.read_text(encoding="utf-8"))
-
-    def test_every_superseded_version_is_repaired(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            config = _config(temporary)
-            base = self._base(config.vault)
-            base.parent.mkdir(parents=True, exist_ok=True)
-            for superseded in SUPERSEDED_BASES:
-                base.write_text(superseded, encoding="utf-8")
-                write_views(config, load_projects(config))
-                self.assertIn(
-                    'file.basename.endsWith("project")', base.read_text(encoding="utf-8")
-                )
 
     def test_a_filter_that_cannot_match_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

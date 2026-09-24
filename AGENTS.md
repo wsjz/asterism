@@ -6,8 +6,7 @@ Asterism is an automated content production pipeline for one creator: it turns
 scattered notes and work logs into digests, content projects, drafts, platform
 versions, and published pieces, with a person involved only at a few decision
 gates. It should feel quiet, local-first, and predictable. Prefer a small
-trustworthy pipeline over a broad platform. The destination, the phases, and
-the current phase are in `docs/roadmap.md`; work one phase at a time.
+trustworthy pipeline over a broad platform.
 
 ## Fixed architectural decisions
 
@@ -78,12 +77,12 @@ Without the virtual environment, prefix both commands with `PYTHONPATH=src`.
 Tests must not require access to the user's real Notes library. Inject a fake
 source into pipeline tests. Real Notes access is an explicit manual check.
 
-## Phases
+## Order of work
 
-Phase 1 (collection) is implemented; see `docs/phase-1.md` for its steps and
-`docs/roadmap.md` for what comes next. Do not start a later phase's modules
-(content projects, gates, compose, deliver, feedback, llm) until the current
-phase's "done" criteria hold, including real use on the user's own vault.
+Collection, choosing, and carrying a piece to publication are all implemented.
+Finish and harden what exists before starting something new, and do not call a
+stage finished until it has been used on the user's own vault, not only in
+tests.
 
 ## Source adapter contract
 

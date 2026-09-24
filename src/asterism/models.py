@@ -135,7 +135,6 @@ class ItemState:
 
 # What the person decided about a collected item. A decision is recorded only
 # once it is made, so an item nobody has judged yet simply has no assignment.
-# See docs/state-model.md.
 ASSIGNMENT_DECISIONS: tuple[str, ...] = ("later", "reference", "used", "dropped")
 UNDECIDED_DECISIONS: tuple[str, ...] = ("later",)  # still needs a decision
 

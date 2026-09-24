@@ -67,7 +67,7 @@ class AngleTest(unittest.TestCase):
             self.assertEqual("hide every cable in one afternoon", offered[1].promise)
 
 
-    def test_a_brief_from_an_older_vault_is_told_apart_from_an_empty_one(self) -> None:
+    def test_a_brief_with_no_angles_section_is_told_apart_from_an_empty_one(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = _vault(temporary)
             project = _candidate(vault)
@@ -83,7 +83,7 @@ class AngleTest(unittest.TestCase):
 
             code, _out, err = _run("confirm", reloaded.id, "--vault", str(vault))
             self.assertEqual(1, code)
-            self.assertIn("predates it", err)
+            self.assertIn("does not offer one", err)
 
 
 class ConfirmTest(unittest.TestCase):

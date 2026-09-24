@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 
-from .config import MATERIAL_DECISIONS, PROJECT_STATUSES, Config, initialize_vault, load_config, migrate_config
+from .config import MATERIAL_DECISIONS, PROJECT_STATUSES, Config, initialize_vault, load_config
 from .digest import DigestBuilder, parse_label
 from .digest.periods import period_containing
 from .gates import (
@@ -88,11 +88,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--commit", action="store_true",
         help="git commit the vault after a fully successful sync (never pushes)",
     )
-
-    migrate_parser = subparsers.add_parser(
-        "migrate-config", help="write asterism.yaml from an existing asterism.toml"
-    )
-    migrate_parser.add_argument("--vault", type=Path, required=True)
 
     missing_parser = subparsers.add_parser(
         "missing", help="list items a source stopped returning; nothing is deleted"
@@ -270,7 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
     material_parser.add_argument("--source", metavar="SOURCE")
 
     apply_parser = subparsers.add_parser(
-        "apply", help="record the outcomes in a review sheet and create the projects"
+        "apply", help="record the outcomes in a picks sheet and create the projects"
     )
     apply_parser.add_argument("--vault", type=Path, required=True)
     apply_parser.add_argument(
@@ -338,11 +333,6 @@ def main(argv: list[str] | None = None) -> int:
             return _digest(load_config(args.vault), args.regenerate, as_json=args.as_json)
         if args.command == "missing":
             return _missing(load_config(args.vault), args.source, as_json=args.as_json)
-        if args.command == "migrate-config":
-            written = migrate_config(args.vault)
-            print(f"Wrote {written}")
-            print("Check it, then delete asterism.toml; both files present is an error.")
-            return 0
     except (SourceError, FileExistsError, FileNotFoundError, ValueError) as error:
         if getattr(args, "as_json", False):
             emit_error(args.command, str(error))
@@ -843,10 +833,9 @@ def _angles_hint(config: Config, project) -> str:
             "`1. **A title** - the promise it keeps`, or pass --title and --promise."
         )
     return (
-        "Its brief has no '## Candidate angles' section: this vault's "
-        "templates/brief-default.md predates it. Delete that file to seed the current "
-        "template for later projects, add the section to this brief by hand, or pass "
-        "--title and --promise."
+        "Its brief has no '## Candidate angles' section, so the template it was "
+        "made from does not offer one. Add the section to this brief, or to "
+        "settings/templates/ for later projects, or pass --title and --promise."
     )
 
 

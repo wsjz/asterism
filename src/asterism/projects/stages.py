@@ -50,17 +50,8 @@ def artifact_path(config: ProjectConfig, artifact: str) -> str:
 
 
 def find_artifact(config: ProjectConfig, directory: Path, artifact: str) -> Path:
-    """The file to read or write, keeping the name a project already uses.
-
-    A project created before the numbers existed keeps its plain names, because
-    renaming files would break every link already written to them. New files get
-    the numbered name.
-    """
-    preferred = directory / artifact_path(config, artifact)
-    if preferred.exists() or config.layout != "flat":
-        return preferred
-    plain = directory / artifact
-    return plain if plain.exists() else preferred
+    """The file to read or write inside a project directory."""
+    return directory / artifact_path(config, artifact)
 
 
 def _numbered(config: ProjectConfig, artifact: str) -> str:

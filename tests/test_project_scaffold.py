@@ -7,14 +7,7 @@ import unittest
 
 from asterism.cli import main
 from asterism.config import CONFIG_NAME, initialize_vault, load_config
-from asterism.projects import (
-    Project,
-    ProjectError,
-    create_project,
-    find_artifact,
-    load_projects,
-    next_id,
-)
+from asterism.projects import Project, ProjectError, create_project, load_projects, next_id
 
 
 PILLARS = (
@@ -106,28 +99,6 @@ class NumberingTest(unittest.TestCase):
             self.assertEqual(
                 ["01-project.md", "02-brief.md"],
                 sorted(path.name for path in project.directory.iterdir()),
-            )
-
-    def test_a_project_made_before_the_numbers_keeps_its_names(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = _vault(temporary)
-            project = create_project(load_config(vault), title="Desk Lighting", today=date(2026, 9, 22))
-            for name, plain in (("01-project.md", "project.md"), ("02-brief.md", "brief.md")):
-                (project.directory / name).rename(project.directory / plain)
-
-            config = load_config(vault)
-            registry = load_projects(config)
-            self.assertEqual(["2026-001"], [item.id for item in registry.projects])
-
-            # a second project still gets the next id, not a colliding one
-            second = create_project(config, title="Cable routing", today=date(2026, 9, 22))
-            self.assertEqual("2026-002", second.id)
-
-            # and writing to the old project keeps writing to the old names
-            found = registry.projects[0]
-            self.assertEqual(
-                project.directory / "project.md",
-                find_artifact(config.project, found.directory, "project.md"),
             )
 
 
