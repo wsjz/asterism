@@ -417,7 +417,7 @@ def _keep_placements(path: Path, lines: list[Line]) -> list[Line]:
     """Respect where a line already sits when the same day's sheet is rebuilt.
 
     Both the section and the topic it was grouped under are kept, so a round of
-    sorting is never undone by running `review` again before `apply`.
+    a round is never undone by running `propose` again before `apply`.
     """
     if not path.is_file():
         return lines
@@ -436,7 +436,7 @@ def _keep_placements(path: Path, lines: list[Line]) -> list[Line]:
 def render_sheet(config: Config, sheet: Sheet, state: StateBackend) -> str:
     front = [
         ("schema", SCHEMA_VERSION),
-        ("kind", "sort"),
+        ("kind", PICKS_DIR),
         ("round", sheet.stamp),
         ("state", "open"),
         ("covers", sheet.covers),
@@ -701,22 +701,23 @@ def sheets(config: Config, prefix: str = "") -> list[Path]:
 
     A file counts when its front matter says it is one. Matching the shape of
     the name instead used to be enough, until a project id could produce a name
-    of the same shape and a project's own file was read as a round of sorting.
+    of the same shape and a project's own file was read as a round.
     """
     root = config.picks_root
     if not root.is_dir():
         return []
     return sorted(
-        path for path in root.glob("*.md") if path.stem.startswith(prefix) and _is_sort_sheet(path)
+        path for path in root.glob("*.md") if path.stem.startswith(prefix) and _is_round(path)
     )
 
 
-def _is_sort_sheet(path: Path) -> bool:
+def _is_round(path: Path) -> bool:
+    """Whether this file says it is a round of choosing, rather than a gate sheet."""
     try:
         fields, _body = parse_front_matter(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError):
         return False
-    return fields.get("kind", "sort") == "sort"
+    return fields.get("kind") == PICKS_DIR
 
 
 def latest_sheet(config: Config, prefix: str = "") -> Path | None:

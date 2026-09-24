@@ -7,7 +7,7 @@ passing a gate is something the person did, not something a command inferred.
 
 The sheets live in the project's own folder, named after the command that
 writes them, because they belong to that piece: dropping a project takes its
-gates with it. ``review/`` holds sorting rounds and nothing else.
+gates with it. ``picks/`` holds the rounds of choosing and nothing else.
 """
 from __future__ import annotations
 

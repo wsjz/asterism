@@ -5,11 +5,9 @@ import unittest
 
 from asterism.config import (
     CONFIG_NAME,
-    LEGACY_CONFIG_NAME,
     ConfigError,
     initialize_vault,
     load_config,
-    migrate_config,
 )
 
 
@@ -27,17 +25,6 @@ class ConfigTest(unittest.TestCase):
             self.assertFalse((vault / "logs").exists())  # nothing ever wrote there
             self.assertIn(".asterism/", (vault / ".gitignore").read_text())
 
-    def test_a_vault_with_state_where_it_used_to_be_keeps_using_it(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            legacy = vault / "state"
-            legacy.mkdir()
-            (legacy / "manifest.json").write_text("{}", encoding="utf-8")
-            shutil.rmtree(vault / ".asterism")
-            config = load_config(vault)
-            self.assertEqual(config.vault / "state", config.state_dir)
-
     def test_settings_a_person_writes_stay_visible_and_together(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = Path(temporary) / "vault"
@@ -45,43 +32,6 @@ class ConfigTest(unittest.TestCase):
             config = load_config(vault)
             self.assertEqual(config.vault / "settings" / "templates", config.templates_root)
             self.assertEqual(config.vault / "settings" / "platforms", config.platforms_root)
-
-    def test_a_vault_with_settings_under_config_keeps_them(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            (vault / "config" / "templates").mkdir(parents=True)
-            config = load_config(vault)
-            self.assertEqual(config.vault / "config" / "templates", config.templates_root)
-
-    def test_a_vault_with_templates_where_they_used_to_be_keeps_them(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            (vault / "templates").mkdir()
-            (vault / "platforms").mkdir()
-            config = load_config(vault)
-            self.assertEqual(config.vault / "templates", config.templates_root)
-            self.assertEqual(config.vault / "platforms", config.platforms_root)
-
-    def test_a_vault_with_the_older_directory_names_keeps_them(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            (vault / "content").mkdir()
-            (vault / "review").mkdir()
-            config = load_config(vault)
-            self.assertEqual(config.vault / "content", config.projects_root)
-            self.assertEqual(config.vault / "review", config.picks_root)
-
-    def test_the_older_configuration_block_is_still_read(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            (vault / CONFIG_NAME).write_text(
-                "state:\n  backend: file\nreview:\n  every: 3\n", encoding="utf-8"
-            )
-            self.assertEqual(3, load_config(vault).picks.every)
 
     def test_a_new_vault_explains_itself(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -203,42 +153,13 @@ class ConfigTest(unittest.TestCase):
                     load_config(vault)
                 self.assertIn(needle, str(raised.exception))
 
-    def test_rejects_ambiguous_and_legacy_configuration(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            vault = Path(temporary) / "vault"
-            initialize_vault(vault, "file")
-            (vault / LEGACY_CONFIG_NAME).write_text('[state]\nbackend = "file"\n')
-            with self.assertRaises(ConfigError) as both:
-                load_config(vault)
-            self.assertIn("both", str(both.exception))
-
-            (vault / CONFIG_NAME).unlink()
-            with self.assertRaises(ConfigError) as legacy:
-                load_config(vault)
-            self.assertIn("migrate-config", str(legacy.exception))
-
-    def test_migrates_toml_to_equivalent_yaml(self) -> None:
+    def test_a_missing_configuration_says_where_it_looked(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = Path(temporary) / "vault"
             vault.mkdir()
-            (vault / LEGACY_CONFIG_NAME).write_text(
-                '[state]\nbackend = "sqlite"\n'
-                '[sources.apple_notes]\naccount = "iCloud"\n'
-                '[sources.flomo]\nexport_path = "exports/flomo.zip"\n'
-                '[sources.markdown]\nroots = ["../Obsidian"]\n',
-                encoding="utf-8",
-            )
-            written = migrate_config(vault)
-            self.assertEqual((vault / CONFIG_NAME).resolve(), written.resolve())
-            with self.assertRaises(FileExistsError):
-                migrate_config(vault)
-
-            (vault / LEGACY_CONFIG_NAME).unlink()
-            loaded = load_config(vault)
-            self.assertEqual("sqlite", loaded.state_backend)
-            self.assertEqual("iCloud", loaded.apple_notes_account)
-            self.assertEqual((vault / "exports" / "flomo.zip").resolve(), loaded.flomo_export_path)
-            self.assertEqual(((Path(temporary) / "Obsidian").resolve(),), loaded.markdown_roots)
+            with self.assertRaises(FileNotFoundError) as raised:
+                load_config(vault)
+            self.assertIn(CONFIG_NAME, str(raised.exception))
 
 
 if __name__ == "__main__":

@@ -6,16 +6,11 @@ import re
 import shutil
 import subprocess
 from string import Formatter
-import tomllib
 from typing import Any, Mapping
 
 import yaml
 
 from .vault import (
-    LEGACY_SETTINGS_DIRS,
-    LEGACY_PICKS_DIR,
-    LEGACY_PROJECTS_DIR,
-    LEGACY_STATE_DIR,
     MACHINE_DIR,
     PICKS_DIR,
     PROJECTS_DIR,
@@ -28,7 +23,6 @@ from .vault import normalize_vault as _normalize_vault
 
 
 CONFIG_NAME = "asterism.yaml"
-LEGACY_CONFIG_NAME = "asterism.toml"
 VALID_STATE_BACKENDS = frozenset({"file", "sqlite"})
 
 MAX_PATH_LENGTH = 4096
@@ -301,27 +295,12 @@ class Config:
     @property
     def projects_root(self) -> Path:
         """Where each piece lives for its whole life, from candidate to published."""
-        return self._staged(PROJECTS_DIR, LEGACY_PROJECTS_DIR)
+        return self.vault / PROJECTS_DIR
 
     @property
     def picks_root(self) -> Path:
         """Where each round of choosing what to make is recorded."""
-        return self._staged(PICKS_DIR, LEGACY_PICKS_DIR)
-
-    def _staged(self, name: str, legacy: str) -> Path:
-        """``name``, or the older name when that is what this vault already uses."""
-        return self._existing(self.vault / name, self.vault / legacy)
-
-    @staticmethod
-    def _existing(preferred: Path, *older: Path) -> Path:
-        """``preferred``, unless a vault already keeps this somewhere it used to be.
-
-        Every directory Asterism has renamed resolves this way, so a vault made
-        at any point keeps working and nobody has to move a folder to upgrade.
-        """
-        if preferred.is_dir():
-            return preferred
-        return next((path for path in older if path.is_dir()), preferred)
+        return self.vault / PICKS_DIR
 
     @property
     def trash_root(self) -> Path:
@@ -339,17 +318,13 @@ class Config:
         return self._configured("platforms")
 
     def _configured(self, name: str) -> Path:
-        """``settings/<name>``, or wherever a vault already keeps it.
+        """``settings/<name>``.
 
         These are settings the person writes as Markdown, so they sit together
         and stay visible: a template is edited in Obsidian like any other note,
         which a hidden directory would prevent.
         """
-        return self._existing(
-            self.vault / SETTINGS_DIR / name,
-            *(self.vault / older / name for older in LEGACY_SETTINGS_DIRS),
-            self.vault / name,
-        )
+        return self.vault / SETTINGS_DIR / name
 
     @property
     def notes_root(self) -> Path:
@@ -364,18 +339,8 @@ class Config:
 
     @property
     def state_dir(self) -> Path:
-        """Where bookkeeping lives: ``.asterism/state``, or where it already is.
-
-        A dot keeps it out of Obsidian's file tree, which should only show what
-        a person opens. A vault created before this keeps its ``state/`` so no
-        one has to move a manifest to keep working.
-        """
-        if self.state_dir_override is not None:
-            return self.state_dir_override
-        legacy = self.vault / LEGACY_STATE_DIR
-        if legacy.is_dir() and not (self.vault / STATE_DIR).is_dir():
-            return legacy
-        return self.vault / STATE_DIR
+        """Where bookkeeping lives. A dot keeps it out of Obsidian's file tree."""
+        return self.state_dir_override if self.state_dir_override is not None else self.vault / STATE_DIR
 
 
 def normalize_vault(path: Path) -> Path:
@@ -392,42 +357,9 @@ def config_path(vault: Path) -> Path:
 def load_config(vault: Path) -> Config:
     root = normalize_vault(vault)
     yaml_path = root / CONFIG_NAME
-    legacy_path = root / LEGACY_CONFIG_NAME
-
-    if yaml_path.is_file() and legacy_path.is_file():
-        raise ConfigError(
-            f"both {CONFIG_NAME} and {LEGACY_CONFIG_NAME} exist in {root}; "
-            f"delete {LEGACY_CONFIG_NAME} after checking the YAML file"
-        )
     if not yaml_path.is_file():
-        if legacy_path.is_file():
-            raise ConfigError(
-                f"{LEGACY_CONFIG_NAME} is no longer read; run "
-                f"'asterism migrate-config --vault {root}' to create {CONFIG_NAME}"
-            )
         raise FileNotFoundError(f"configuration not found: {yaml_path}")
-
-    raw = _read_yaml(yaml_path)
-    return _build_config(root, raw)
-
-
-def migrate_config(vault: Path) -> Path:
-    """Write asterism.yaml from an existing asterism.toml without deleting it."""
-    root = normalize_vault(vault)
-    legacy_path = root / LEGACY_CONFIG_NAME
-    yaml_path = root / CONFIG_NAME
-    if not legacy_path.is_file():
-        raise FileNotFoundError(f"nothing to migrate: {legacy_path} does not exist")
-    if yaml_path.exists():
-        raise FileExistsError(f"refusing to overwrite existing {yaml_path}")
-
-    with legacy_path.open("rb") as handle:
-        data = tomllib.load(handle)
-    # Validate before writing so a broken TOML file never becomes a broken YAML file.
-    _build_config(root, data)
-    rendered = yaml.safe_dump(data, sort_keys=False, allow_unicode=True, default_flow_style=False)
-    atomic_write(yaml_path, rendered)
-    return yaml_path
+    return _build_config(root, _read_yaml(yaml_path))
 
 
 def initialize_vault(vault: Path, state_backend: str) -> Config:
@@ -446,7 +378,7 @@ def initialize_vault(vault: Path, state_backend: str) -> Config:
         destination.mkdir(parents=True, exist_ok=True)
 
     path = root / CONFIG_NAME
-    if path.exists() or (root / LEGACY_CONFIG_NAME).exists():
+    if path.exists():
         raise FileExistsError(f"configuration already exists in {root}")
 
     path.write_text(_default_config_text(state_backend), encoding="utf-8")
@@ -671,7 +603,7 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         raise ConfigError("links must be 'wikilink' or 'markdown'")
 
     content = _content_config(_table(raw, "content"))
-    picks = _picks_config(_table(raw, "picks") or _table(raw, "review"))
+    picks = _picks_config(_table(raw, "picks"))
     project = _project_config(_table(raw, "project"), content)
 
     return Config(

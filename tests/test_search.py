@@ -49,7 +49,7 @@ def _vault(temporary: str) -> Path:
 
 
 def _project(vault: Path, *, draft: str, brief: str = "") -> Path:
-    folder = vault / "content" / "2026" / "2026-09-22-A piece"
+    folder = vault / "projects" / "2026" / "2026-09-22-A piece"
     folder.mkdir(parents=True)
     (folder / "01-project.md").write_text(
         "---\nid: 2026-001\ntitle: A piece\nstatus: making\n---\n", encoding="utf-8"
@@ -87,7 +87,7 @@ class SearchTest(unittest.TestCase):
             vault = _vault(temporary)
             _project(vault, draft="I wrote about glare myself.", brief="A lamp that does not glare")
             hits = search(load_config(vault), "glare", scope="content")
-            self.assertEqual(["content/2026/2026-09-22-A piece/03-draft.md"], [h.path for h in hits])
+            self.assertEqual(["projects/2026/2026-09-22-A piece/03-draft.md"], [h.path for h in hits])
 
     def test_the_search_is_case_insensitive_and_reports_the_line(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

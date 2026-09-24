@@ -21,10 +21,7 @@ dist/
 # Local Asterism vault data
 .asterism-data/
 asterism.local.toml
-/state/*
-!/state/.gitkeep
-/logs/*
-!/logs/.gitkeep
+/.asterism/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
@@ -44,9 +41,9 @@ asterism.local.toml
 /notes/opencli-*/
 
 # Vault output when this repository is used as a vault
-/content/
+/projects/
 /trash/
-/review/
+/picks/
 /settings/
 /archive/
 /inbox/

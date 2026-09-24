@@ -30,7 +30,7 @@ sources:
           tags: tags
           exclude: [slug]
 
-# Review: how often you sort collected material. Rules are yours to write;
+# Picks: how often you choose what to make. Rules are yours to write;
 # without them every item is listed as undecided and nothing is automatic.
-review:
+picks:
   every: 3

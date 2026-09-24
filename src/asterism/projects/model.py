@@ -48,29 +48,18 @@ NEXT_ACTION: dict[str, str] = {
 
 
 def find_cards(root: Path) -> list[Path]:
-    """Every project card below ``root``, numbered or not.
+    """Every project card below ``root``.
 
-    Both discovery and id allocation read this, so a project can never be
+    Discovery and id allocation both read this, so a project can never be
     invisible to one and visible to the other.
     """
-    if not root.is_dir():
-        return []
-    found = set(root.rglob(PROJECT_FILE)) | set(root.rglob(f"[0-9][0-9]-{PROJECT_FILE}"))
-    return sorted(found)
+    return sorted(root.rglob(f"[0-9][0-9]-{PROJECT_FILE}")) if root.is_dir() else []
 
 
 def card_in(directory: Path) -> Path:
-    """The project card in ``directory``, numbered or not.
-
-    Projects made before the names carried their production order keep the
-    plain ``project.md``; both are read, and neither is rewritten into the
-    other, because renaming would break the links already pointing at them.
-    """
-    plain = directory / PROJECT_FILE
-    if plain.is_file():
-        return plain
-    numbered = sorted(directory.glob(f"[0-9][0-9]-{PROJECT_FILE}"))
-    return numbered[0] if numbered else plain
+    """The project card in ``directory``."""
+    found = sorted(directory.glob(f"[0-9][0-9]-{PROJECT_FILE}"))
+    return found[0] if found else directory / PROJECT_FILE
 
 
 class ProjectError(ValueError):
