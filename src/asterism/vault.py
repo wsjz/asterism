@@ -19,7 +19,6 @@ MACHINE_DIR = ".asterism"  # bookkeeping; a dot keeps it out of Obsidian's tree
 SETTINGS_DIR = "settings"
 STATE_DIR = f"{MACHINE_DIR}/state"
 ARCHIVE_DIR = "archive"
-INBOX_DIR = "inbox"
 
 
 class VaultPathError(ValueError):

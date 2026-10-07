@@ -90,7 +90,7 @@ def render_index(config: Config, registry: Registry) -> str:
 def _title_link(config: Config, project: Project, index_file) -> str:
     if project.directory is None:
         return project.title
-    card = find_artifact(config.project, project.directory, PROJECT_FILE)
+    card = find_artifact(project.directory, PROJECT_FILE)
     relative = card.relative_to(config.vault).as_posix()
     return link_to(config.links, config.vault, relative, project.title, from_file=index_file)
 

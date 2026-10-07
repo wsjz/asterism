@@ -65,8 +65,6 @@ class DigestConfig:
     week: DigestLevelConfig = DigestLevelConfig(enabled=True, run_on=7)
     month: DigestLevelConfig = DigestLevelConfig(enabled=True, run_on=MONTH_RUN_ON_LAST)
     year: DigestLevelConfig = DigestLevelConfig(enabled=False, run_on=12)
-    llm_summary: bool = False
-    llm_placement: str = "separate"
 
     def level(self, name: str) -> DigestLevelConfig:
         return getattr(self, name)
@@ -136,18 +134,10 @@ class OpencliConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class StorageConfig:
-    media_root: Path | None = None  # large files; may be a NAS mount. None: inside the vault
-    inbox: tuple[Path, ...] = ()  # unassigned captures; the only places Asterism moves files from
-
-
-@dataclass(frozen=True, slots=True)
 class ArchiveConfig:
     enabled: bool = False  # master switch: when off nothing is moved or copied anywhere
     root: Path | None = None  # None: <vault>/archive
-    mode: str = "copy"  # applies to digests only; project folders are always copied
-    on_publish: bool = False
-    auto_execute: bool = False
+    mode: str = "copy"  # what happens to a digest once a higher level has rolled it up
 
 
 MATERIAL_DECISIONS: tuple[str, ...] = ("later", "reference", "used", "dropped")
@@ -183,7 +173,6 @@ class PicksConfig:
 
 DEFAULT_TYPES: tuple[str, ...] = ("tutorial", "review", "makeover", "opinion", "checklist")
 DEFAULT_PLATFORMS: tuple[str, ...] = ("blog", "zhihu", "xiaohongshu", "douyin", "sspai", "flowus")
-PROJECT_LAYOUTS = frozenset({"flat", "staged"})
 # Five steps, three gates, and one exit.
 PROJECT_STATUSES: tuple[str, ...] = (
     "candidate",
@@ -195,7 +184,6 @@ PROJECT_STATUSES: tuple[str, ...] = (
 )
 LIVE_PROJECT_STATUSES: tuple[str, ...] = tuple(s for s in PROJECT_STATUSES if s != "dropped")
 PATH_PLACEHOLDERS = frozenset({"year", "date", "title", "id", "pillar", "type"})
-BINDING_NAMES = frozenset({"unassigned_media", "platform_exports", "covers"})
 
 _KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$")
@@ -222,47 +210,9 @@ class ContentConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class Stage:
-    """One step of production, and therefore one directory in a project."""
-
-    key: str
-    artifacts: tuple[str, ...] = ()
-    media: tuple[str, ...] = ()
-    media_per_platform: bool = False
-    dir: str | None = None  # explicit directory name, overriding the numbered key
-
-
-DEFAULT_STAGES: tuple[Stage, ...] = (
-    Stage("brief", artifacts=("project.md", "brief.md")),
-    Stage("research", artifacts=("assets.md",)),
-    Stage("originals", media=("photo", "video", "screen-recording")),
-    Stage("project", media=("editing",)),
-    Stage("export", media_per_platform=True),
-    Stage("cover", media=("cover",)),
-    Stage("archive", artifacts=("draft.md", "check.md", "release.md", "exports/", "review.md")),
-)
-DEFAULT_BINDINGS: dict[str, str] = {
-    "unassigned_media": "originals",
-    "platform_exports": "export",
-    "covers": "cover",
-}
-
-
-@dataclass(frozen=True, slots=True)
 class ProjectConfig:
     id_format: str = "{year}-{seq:03d}"
     path: str = "{year}/{date}-{title}"
-    layout: str = "flat"
-    numbered: bool = True
-    stages: tuple[Stage, ...] = DEFAULT_STAGES
-    bindings: tuple[tuple[str, str], ...] = tuple(sorted(DEFAULT_BINDINGS.items()))
-
-    def stage(self, key: str) -> Stage | None:
-        return next((entry for entry in self.stages if entry.key == key), None)
-
-    def bound_stage(self, binding: str) -> Stage | None:
-        key = dict(self.bindings).get(binding)
-        return self.stage(key) if key else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,7 +230,6 @@ class Config:
     apple_notes_exclude_folders: tuple[str, ...] = DEFAULT_EXCLUDED_NOTES_FOLDERS
     digest: DigestConfig = DigestConfig()
     links: str = "wikilink"
-    storage: StorageConfig = StorageConfig()
     archive: ArchiveConfig = ArchiveConfig()
     state_dir_override: Path | None = None
     opencli: OpencliConfig = OpencliConfig()
@@ -311,11 +260,6 @@ class Config:
     def templates_root(self) -> Path:
         """Where the brief and card templates live, with the rest of the configuration."""
         return self._configured("templates")
-
-    @property
-    def platforms_root(self) -> Path:
-        """Where each platform's rewriting rules live."""
-        return self._configured("platforms")
 
     def _configured(self, name: str) -> Path:
         """``settings/<name>``.
@@ -405,8 +349,8 @@ sources ──► notes/ ──► picks/ ──► projects/
 |---|---|---|
 | `notes/` | everything collected, mirrored one file per item, plus digests | `asterism sync`; never edit by hand |
 | `picks/` | one sheet per round: what has no outcome yet, threads first | `asterism propose` writes it, you move the lines |
-| `projects/` | one folder per piece, `01-project` through `06-release` in the order they are made | the commands and you |
-| `settings/` | brief templates and each platform's rewriting rules | you |
+| `projects/` | one folder per piece: `01-project`, `02-brief`, `03-draft`, `04-exports`, in the order they are made | the card and brief by the commands, the writing by you |
+| `settings/` | brief templates, and `platforms/<platform>.md` with each platform's rewriting rules | you |
 | `asterism.yaml` | pillars, types, platforms, how often you choose | you |
 
 Obsidian hides file types it cannot open, so `asterism.yaml` will not appear in
@@ -422,10 +366,10 @@ asterism propose   # write picks/<date>.md
 #                    under used, gather the lines of one piece beneath a `### topic`
 asterism apply     # each topic becomes a project, as a candidate
 asterism confirm <id> --angle N    # gate 1: decide what it will be
-asterism draft <id>                # then write
-asterism check <id> / accept <id>  # gate 2
-asterism adapt <id>                # platform versions
-asterism release <id> / publish <id>   # gate 3
+#                    write 03-draft.md
+asterism accept <id>               # gate 2: the draft is good enough
+#                    write one version per platform under 04-exports/
+asterism publish <id> --url blog=https://...   # gate 3: record where it went
 ```
 
 Nothing here is ever deleted or pushed anywhere. `asterism status` says what
@@ -511,14 +455,8 @@ def _default_config_text(state_backend: str) -> str:
         "# Link style in generated Markdown: wikilink (Obsidian) or markdown.\n"
         "links: wikilink\n"
         "\n"
-        "# Large files and unassigned captures. media_root may be a NAS mount.\n"
-        "# storage:\n"
-        "#   media_root: /Volumes/Content\n"
-        "#   inbox:\n"
-        "#     - ~/ContentVault/inbox\n"
-        "\n"
-        "# Archiving is off until enabled; then rolled-up digests (and later,\n"
-        "# published projects) are copied or moved below archive.root.\n"
+        "# Archiving is off until enabled; then rolled-up digests are copied or\n"
+        "# moved below archive.root.\n"
         "# archive:\n"
         "#   enabled: false\n"
         "#   root: /Volumes/Archive/Content\n"
@@ -551,11 +489,6 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         raise ConfigError("state.backend must be 'file' or 'sqlite'")
     state_dir = _optional_path(state, "state_dir", "state.state_dir", root)
 
-    storage_table = _table(raw, "storage")
-    storage = StorageConfig(
-        media_root=_optional_path(storage_table, "media_root", "storage.media_root", root),
-        inbox=_path_list(storage_table, "inbox", "storage.inbox", root),
-    )
     archive_table = _table(raw, "archive")
     archive_mode = archive_table.get("mode", "copy")
     if archive_mode not in ARCHIVE_MODES:
@@ -564,8 +497,6 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         enabled=_bool(archive_table, "enabled", False, "archive.enabled"),
         root=_optional_path(archive_table, "root", "archive.root", root),
         mode=archive_mode,
-        on_publish=_bool(archive_table, "on_publish", False, "archive.on_publish"),
-        auto_execute=_bool(archive_table, "auto_execute", False, "archive.auto_execute"),
     )
 
     sources = _table(raw, "sources")
@@ -604,7 +535,7 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
 
     content = _content_config(_table(raw, "content"))
     picks = _picks_config(_table(raw, "picks"))
-    project = _project_config(_table(raw, "project"), content)
+    project = _project_config(_table(raw, "project"))
 
     return Config(
         vault=root,
@@ -619,7 +550,6 @@ def _build_config(root: Path, raw: Mapping[str, Any]) -> Config:
         apple_notes_timezone=apple_timezone,
         digest=digest,
         links=links,
-        storage=storage,
         archive=archive,
         state_dir_override=state_dir,
         opencli=opencli,
@@ -696,79 +626,13 @@ def _content_config(table: Mapping[str, Any]) -> ContentConfig:
     return ContentConfig(pillars=tuple(pillars), types=types, platforms=platforms)
 
 
-def _project_config(table: Mapping[str, Any], content: ContentConfig) -> ProjectConfig:
+def _project_config(table: Mapping[str, Any]) -> ProjectConfig:
     defaults = ProjectConfig()
     id_format = _optional_short_string(table, "id_format", "project.id_format") or defaults.id_format
     _check_id_format(id_format)
     path = _optional_short_string(table, "path", "project.path") or defaults.path
     _check_path_template(path)
-    layout = table.get("layout", defaults.layout)
-    if layout not in PROJECT_LAYOUTS:
-        raise ConfigError("project.layout must be 'flat' or 'staged'")
-    numbered = _bool(table, "numbered", defaults.numbered, "project.numbered")
-
-    stages = defaults.stages
-    if "stages" in table:
-        stages = _stages(table["stages"])
-    bindings = dict(defaults.bindings) if "stages" not in table else {}
-    if "bindings" in table:
-        raw_bindings = table["bindings"]
-        if not isinstance(raw_bindings, dict):
-            raise ConfigError("project.bindings must be a mapping")
-        bindings = {}
-        for name, key in raw_bindings.items():
-            if name not in BINDING_NAMES:
-                raise ConfigError(
-                    f"project.bindings.{name} is not a binding; use one of {', '.join(sorted(BINDING_NAMES))}"
-                )
-            if not isinstance(key, str) or not any(stage.key == key for stage in stages):
-                raise ConfigError(f"project.bindings.{name} must name one of the configured stages")
-            bindings[name] = key
-    for name, key in bindings.items():
-        if not any(stage.key == key for stage in stages):
-            raise ConfigError(f"project.bindings.{name} names an unknown stage: {key}")
-    exports = bindings.get("platform_exports")
-    if exports is not None:
-        stage = next(entry for entry in stages if entry.key == exports)
-        if not stage.media_per_platform:
-            raise ConfigError(
-                "project.bindings.platform_exports must name a stage with media_per_platform: true"
-            )
-    return ProjectConfig(
-        id_format=id_format,
-        path=path,
-        layout=layout,
-        numbered=numbered,
-        stages=stages,
-        bindings=tuple(sorted(bindings.items())),
-    )
-
-
-def _stages(value: Any) -> tuple[Stage, ...]:
-    if not isinstance(value, list) or not value or len(value) > 30:
-        raise ConfigError("project.stages must be a non-empty list of at most 30 stages")
-    stages: list[Stage] = []
-    for index, entry in enumerate(value):
-        label = f"project.stages[{index}]"
-        if not isinstance(entry, dict):
-            raise ConfigError(f"{label} must be a mapping")
-        key = entry.get("key")
-        if not isinstance(key, str) or _KEY.match(key) is None or len(key) > 40:
-            raise ConfigError(f"{label}.key must be a short lowercase slug such as originals")
-        if any(existing.key == key for existing in stages):
-            raise ConfigError(f"{label}.key duplicates another stage: {key}")
-        artifacts = _string_list(entry, "artifacts", f"{label}.artifacts")
-        for artifact in artifacts:
-            _require_relative(artifact, f"{label}.artifacts")
-        media = _slug_list(entry, "media", f"{label}.media")
-        per_platform = _bool(entry, "media_per_platform", False, f"{label}.media_per_platform")
-        directory = _optional_short_string(entry, "dir", f"{label}.dir")
-        if directory is not None and _SAFE_SEGMENT.match(directory) is None:
-            raise ConfigError(f"{label}.dir must be a plain directory name")
-        stages.append(
-            Stage(key=key, artifacts=artifacts, media=media, media_per_platform=per_platform, dir=directory)
-        )
-    return tuple(stages)
+    return ProjectConfig(id_format=id_format, path=path)
 
 
 def _slug_list(table: Mapping[str, Any], key: str, label: str) -> tuple[str, ...]:
@@ -905,12 +769,6 @@ def _digest_config(table: Mapping[str, Any]) -> DigestConfig:
     if not isinstance(excerpt, int) or isinstance(excerpt, bool) or not 20 <= excerpt <= 10_000:
         raise ConfigError("digest.excerpt_chars must be an integer between 20 and 10000")
 
-    llm = _table(table, "llm", "digest.llm")
-    llm_summary = _bool(llm, "summary", defaults.llm_summary, "digest.llm.summary")
-    placement = llm.get("placement", defaults.llm_placement)
-    if placement not in {"separate", "inline"}:
-        raise ConfigError("digest.llm.placement must be 'separate' or 'inline'")
-
     return DigestConfig(
         timezone=timezone,
         after_sync=after_sync,
@@ -919,8 +777,6 @@ def _digest_config(table: Mapping[str, Any]) -> DigestConfig:
         week=_digest_level(_table(table, "week", "digest.week"), "week", defaults.week),
         month=_digest_level(_table(table, "month", "digest.month"), "month", defaults.month),
         year=_digest_level(_table(table, "year", "digest.year"), "year", defaults.year),
-        llm_summary=llm_summary,
-        llm_placement=placement,
     )
 
 

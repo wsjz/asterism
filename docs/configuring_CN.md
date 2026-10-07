@@ -24,8 +24,8 @@ AsterismVault/
 
 它同时会被建成 Git 仓库（除非这个文件夹本来就在某个仓库里），**从第一天起你写的
 东西就有历史**。任何时候都不会推送。其余目录只在真的有东西时才出现：第一轮分拣出
-`projects/` 和 `picks/`，第一个项目出 `settings/templates/` 和
-`settings/platforms/`，搁置项目才出 `trash/`。
+`projects/` 和 `picks/`，第一个项目出 `settings/templates/`，搁置项目才出 `trash/`。
+`settings/platforms/` 由你在写某个平台的规则时自己建。
 
 检查配置和 macOS 集成：
 
@@ -187,8 +187,13 @@ project:
 
 模板在第一次被用到时播种进 vault（`settings/templates/project.md`、
 `settings/templates/brief-<name>.md`），所以改了它们，之后的每个项目都跟着变。
-**状态是你的**：机器只在建项目时设一次、之后只读，推进一篇作品就是在 Obsidian 里改
-一下。
+**状态是你的**：它只在三道门——`confirm`、`accept`、`publish`——或者你在 Obsidian
+里手改时才会动，从不自己往前走。
+
+一篇作品怎么改写成某个平台的版本，是你自己写的一条笔记
+`settings/platforms/<platform>.md`：篇幅、开头、必须有什么、绝不能有什么。改写平台
+版本的人——你或者 agent——照着它写进 `04-exports/<platform>.md`。Asterism 不自带任何
+规则，因为一个平台上什么管用，是你的判断。
 
 `--vault` 决定输出的根。按上面的命令，Apple Notes 会写到：
 

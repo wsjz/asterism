@@ -55,11 +55,6 @@ def _json(*argv: str) -> tuple[int, dict]:
     return code, json.loads(out.getvalue())
 
 
-def _tick(path: Path) -> None:
-    """Answer every question on a gate sheet, the way a person would."""
-    path.write_text(path.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
-
-
 class FlowTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -114,209 +109,63 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual([], gathered["added"])  # both are already on the card
 
-        # draft
-        code, drafted = _json("draft", project.id, "--vault", self.v)
-        self.assertEqual(0, code)
-        self.assertTrue(drafted["created"])
-        draft = self.vault / drafted["draft"]
-        self.assertIn("## Material", draft.read_text(encoding="utf-8"))
-        self.assertIn("Desk lighting", draft.read_text(encoding="utf-8"))
+        # the writing is the writer's: nothing here generates it
+        (project.directory / "03-draft.md").write_text("# A tidy desk\n\nProse.\n", encoding="utf-8")
 
-        # gate 2 reports what is missing and refuses to move on unanswered
-        code, checked = _json("check", project.id, "--vault", self.v)
-        kinds = {finding["kind"] for finding in checked["findings"]}
-        self.assertIn("no-platform", kinds)
-        self.assertEqual(2, checked["gathered"])
-        self.assertEqual(0, checked["cited"])
-
-        code, refused = _json("accept", project.id, "--vault", self.v)
-        self.assertEqual(1, code)
-        self.assertIn("unticked", refused["error"])
-        self.assertEqual("making", self._project().status)
-
-        _tick(self.vault / checked["sheet"])
+        # gate 2
         code, accepted = _json("accept", project.id, "--vault", self.v)
         self.assertEqual(0, code)
         self.assertEqual("ready", accepted["status"])
 
-        # platforms, then the exports
-        card = self._project()
-        text = (card.directory / "01-project.md").read_text(encoding="utf-8")
-        (card.directory / "01-project.md").write_text(
-            text.replace("platforms: []", "platforms:\n- blog\n- zhihu"), encoding="utf-8"
-        )
-        code, adapted = _json("adapt", card.id, "--vault", self.v)
-        self.assertEqual(["blog", "zhihu"], adapted["written"])
-        self.assertTrue((self.vault / adapted["exports"]["blog"]).is_file())
-        self.assertTrue((self.vault / "settings/platforms/blog.md").is_file())
-
-        # gate 3
-        code, released = _json("release", card.id, "--vault", self.v)
+        # platforms, then gate 3
+        code, _ = _json("set", project.id, "--vault", self.v, "--platform", "blog", "--platform", "zhihu")
         self.assertEqual(0, code)
-        self.assertEqual([], released["missing"])
-        _tick(self.vault / released["sheet"])
-
-        code, published = _json("publish", card.id, "--vault", self.v,
+        code, published = _json("publish", project.id, "--vault", self.v,
                                 "--url", "blog=https://example.test/desk")
         self.assertEqual(0, code)
         self.assertEqual("published", published["status"])
         self.assertEqual("https://example.test/desk", published["published"]["blog"]["url"])
+        self.assertIn("at", published["published"]["zhihu"])  # posted, link not given
         self.assertEqual("published", self._project().status)
-
-    def test_naming_a_note_is_not_citing_it(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--status", "making", "--platform", "blog",
-              "--source", "notes/flomo/origin/Desk lighting.md")
-        project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        draft = project.directory / "03-draft.md"
-        head = draft.read_text(encoding="utf-8")
-
-        # the piece is named after its own material, which used to count as a citation
-        draft.write_text(head.replace("## Material", "## Body\n\nWhat makes Desk lighting hard?\n\n## Material"),
-                         encoding="utf-8")
-        _code, checked = _json("check", project.id, "--vault", self.v)
-        self.assertEqual(0, checked["cited"])
-        self.assertIn("uncited", {f["kind"] for f in checked["findings"]})
-
-        # a real link to it settles the check
-        draft.write_text(
-            draft.read_text(encoding="utf-8").replace(
-                "What makes Desk lighting hard?",
-                "What makes [[notes/flomo/origin/Desk lighting|this]] hard?",
-            ),
-            encoding="utf-8",
-        )
-        _code, checked = _json("check", project.id, "--vault", self.v)
-        self.assertEqual(1, checked["cited"])
-        self.assertEqual([], [f for f in checked["findings"] if f["kind"] == "uncited"])
-
-    def test_composing_again_never_touches_the_prose(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--status", "making")
-        project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        draft = project.directory / "03-draft.md"
-        written = "# Desk lighting\n\n## A heading the brief never had\n\nReal prose.\n\n## Material\n\n- old\n"
-        draft.write_text(written, encoding="utf-8")
-
-        _code, again = _json("draft", project.id, "--vault", self.v)
-        self.assertFalse(again["created"])
-        text = draft.read_text(encoding="utf-8")
-        self.assertIn("## A heading the brief never had", text)
-        self.assertIn("Real prose.", text)  # restructuring a draft must never lose it
-        self.assertNotIn("- old", text)  # only the material list is refreshed
+        self.assertTrue((project.directory / "03-draft.md").is_file())
 
     def test_a_piece_with_no_platform_still_finishes(self) -> None:
         # a report goes to one person, not to a platform, and used to be stuck
         _json("new", "September report", "--vault", self.v, "--status", "making")
         project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        _code, checked = _json("check", project.id, "--vault", self.v)
-        self.assertIn("no-platform", {f["kind"] for f in checked["findings"]})
-
-        _tick(self.vault / checked["sheet"])
-        _json("accept", project.id, "--vault", self.v)
-
-        code, released = _json("release", project.id, "--vault", self.v)
+        code, _ = _json("accept", project.id, "--vault", self.v)
         self.assertEqual(0, code)
-        self.assertEqual([], released["missing"])
-        sheet = self.vault / released["sheet"]
-        self.assertIn("names no platform", sheet.read_text(encoding="utf-8"))
 
-        _tick(sheet)
         code, published = _json("publish", project.id, "--vault", self.v)
         self.assertEqual(0, code)
         self.assertEqual("published", published["status"])
         self.assertEqual({}, published["published"])
         self.assertEqual("published", self._project().status)
 
-    def test_a_candidate_cannot_be_drafted(self) -> None:
+    def test_each_gate_answers_only_its_own_question(self) -> None:
         _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup")
         project = self._project()
-        code, payload = _json("draft", project.id, "--vault", self.v)
+
+        code, refused = _json("accept", project.id, "--vault", self.v)
         self.assertEqual(1, code)
-        self.assertIn("confirm it first", payload["error"])
+        self.assertIn("'candidate'", refused["error"])  # gate 1 comes first
 
-    def test_an_edited_export_is_never_overwritten(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--platform", "blog", "--status", "making")
+        _json("confirm", project.id, "--vault", self.v, "--title", "Desk lighting")
+        code, refused = _json("publish", project.id, "--vault", self.v)
+        self.assertEqual(1, code)
+        self.assertIn("'making'", refused["error"])  # and gate 2 before gate 3
+        self.assertEqual("making", self._project().status)
+
+    def test_a_link_for_a_platform_the_card_does_not_plan_is_refused(self) -> None:
+        _json("new", "Desk lighting", "--vault", self.v, "--status", "making", "--platform", "blog")
         project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        _code, first = _json("adapt", project.id, "--vault", self.v)
-        export = self.vault / first["exports"]["blog"]
-        export.write_text("# Rewritten by hand\n", encoding="utf-8")
+        _json("accept", project.id, "--vault", self.v)
 
-        _code, again = _json("adapt", project.id, "--vault", self.v)
-        self.assertEqual(["blog"], again["kept"])
-        self.assertEqual("# Rewritten by hand\n", export.read_text(encoding="utf-8"))
-
-    def test_editing_only_the_prose_is_enough_to_keep_an_export(self) -> None:
-        """A person who rewrites the body and never touches the header is protected too."""
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--platform", "blog", "--status", "making")
-        project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        _code, first = _json("adapt", project.id, "--vault", self.v)
-        export = self.vault / first["exports"]["blog"]
-        generated = export.read_text(encoding="utf-8")
-        self.assertIn("fingerprint: ", generated)
-        edited = generated.rstrip() + "\n\nOne sentence added at the end, header untouched.\n"
-        export.write_text(edited, encoding="utf-8")
-
-        _code, again = _json("adapt", project.id, "--vault", self.v)
-        self.assertEqual(["blog"], again["kept"])
-        self.assertEqual(edited, export.read_text(encoding="utf-8"))
-
-    def test_an_untouched_export_follows_the_draft(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--platform", "blog", "--status", "making")
-        project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        _code, first = _json("adapt", project.id, "--vault", self.v)
-        export = self.vault / first["exports"]["blog"]
-        draft = project.directory / "03-draft.md"
-        draft.write_text(
-            draft.read_text(encoding="utf-8").replace("# Desk lighting\n", "# Desk lighting\n\nA new opening.\n"),
-            encoding="utf-8",
-        )
-
-        _code, again = _json("adapt", project.id, "--vault", self.v)
-        self.assertEqual(["blog"], again["written"])
-        self.assertIn("A new opening.", export.read_text(encoding="utf-8"))
-
-    def test_an_export_from_before_fingerprints_is_judged_by_its_marker(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--platform", "blog", "--status", "making")
-        project = self._project()
-        _json("draft", project.id, "--vault", self.v)
-        _code, first = _json("adapt", project.id, "--vault", self.v)
-        export = self.vault / first["exports"]["blog"]
-        legacy = "---\nproject: x\nplatform: blog\n---\n\n<!-- asterism:generated -->\n\nOld body\n"
-        export.write_text(legacy, encoding="utf-8")
-        _code, again = _json("adapt", project.id, "--vault", self.v)
-        self.assertEqual(["blog"], again["written"])  # still marked as the machine's
-
-        export.write_text("---\nproject: x\nplatform: blog\n---\n\nMine now\n", encoding="utf-8")
-        _code, third = _json("adapt", project.id, "--vault", self.v)
-        self.assertEqual(["blog"], third["kept"])
-
-    def test_the_draft_takes_its_sections_from_the_briefs_outline(self) -> None:
-        _json("new", "Desk lighting", "--vault", self.v, "--pillar", "desk-setup",
-              "--status", "making")
-        project = self._project()
-        brief = project.directory / "02-brief.md"
-        brief.write_text(
-            brief.read_text(encoding="utf-8").replace(
-                "## Outline\n", "## Outline\n\n- Why the desk feels loud\n- What to change first\n"
-            ),
-            encoding="utf-8",
-        )
-        _code, drafted = _json("draft", project.id, "--vault", self.v)
-        self.assertEqual(["Why the desk feels loud", "What to change first"], drafted["headings"])
-        text = (project.directory / "03-draft.md").read_text(encoding="utf-8")
-        self.assertIn("## Why the desk feels loud", text)
-        self.assertNotIn("## Audience", text)  # planning prompts stay in the brief
+        code, refused = _json("publish", project.id, "--vault", self.v,
+                              "--url", "blgo=https://example.test/desk")
+        self.assertEqual(1, code)
+        self.assertIn("blgo", refused["error"])
+        self.assertEqual("ready", self._project().status)  # a typo loses nothing
 
 
 if __name__ == "__main__":

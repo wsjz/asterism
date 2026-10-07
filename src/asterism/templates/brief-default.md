@@ -22,7 +22,7 @@ an opinion._
 
 ## Outline
 
-_The sections the piece will have, one per line. `asterism draft` copies these
+_The sections the piece will have, one per line. The draft starts from these
 and nothing else, because the headings above are for planning and no finished
 piece has a section called "Audience"._
 

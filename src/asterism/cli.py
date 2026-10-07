@@ -13,14 +13,12 @@ from .config import MATERIAL_DECISIONS, PROJECT_STATUSES, Config, initialize_vau
 from .digest import DigestBuilder, parse_label
 from .digest.periods import period_containing
 from .gates import (
+    accept_project,
     apply_sheet,
     build_sheet,
     days_since_last,
     latest_sheet,
-    pass_gate,
-    record_publication,
-    write_draft_gate,
-    write_publish_gate,
+    publish_project,
 )
 from .pipeline import Pipeline
 from .projects import (
@@ -35,7 +33,6 @@ from .projects import (
     restore_project,
     write_views,
 )
-from .compose import adapt_project, check_draft, compose_draft, draft_path
 from .projects.index import BASE_FILE, dead_filter
 from .projects.model import NEXT_ACTION
 from .report import emit, emit_error
@@ -146,38 +143,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="report what would be added and write nothing"
     )
 
-    draft_parser = subparsers.add_parser(
-        "draft", help="compose the draft skeleton from the brief and the gathered material"
-    )
-    draft_parser.add_argument("project_id")
-    draft_parser.add_argument("--vault", type=Path, required=True)
-
-    check_parser = subparsers.add_parser(
-        "check", help="gate 2: report what the draft lacks and ask the person to answer"
-    )
-    check_parser.add_argument("project_id")
-    check_parser.add_argument("--vault", type=Path, required=True)
-
     accept_parser = subparsers.add_parser(
-        "accept", help="gate 2: read the answered sheet and make the piece ready"
+        "accept", help="gate 2: the person accepts the draft, so the piece is ready"
     )
     accept_parser.add_argument("project_id")
     accept_parser.add_argument("--vault", type=Path, required=True)
 
-    adapt_parser = subparsers.add_parser(
-        "adapt", help="write one export per platform from the draft"
-    )
-    adapt_parser.add_argument("project_id")
-    adapt_parser.add_argument("--vault", type=Path, required=True)
-
-    release_parser = subparsers.add_parser(
-        "release", help="gate 3: list the exports and ask for the publication decision"
-    )
-    release_parser.add_argument("project_id")
-    release_parser.add_argument("--vault", type=Path, required=True)
-
     publish_parser = subparsers.add_parser(
-        "publish", help="gate 3: read the answered sheet and record the publication"
+        "publish", help="gate 3: the person published it; record where, never pushes"
     )
     publish_parser.add_argument("project_id")
     publish_parser.add_argument("--vault", type=Path, required=True)
@@ -317,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
             return _snapshot(load_config(args.vault), args)
         if args.command == "find":
             return _find(load_config(args.vault), args)
-        if args.command in ("draft", "check", "accept", "adapt", "release", "publish"):
+        if args.command in ("accept", "publish"):
             return _project_step(load_config(args.vault), args)
         if args.command == "drop":
             return _drop(load_config(args.vault), args.project_id, as_json=args.as_json)
@@ -542,13 +515,6 @@ def _storage_report(config: Config) -> dict[str, object]:
         "state": config.state_dir.as_posix(),
         "backend": config.state_backend,
         "state_dir_override": config.state_dir_override.as_posix() if config.state_dir_override else None,
-        "media_root": (
-            {"path": config.storage.media_root.as_posix(), "mounted": config.storage.media_root.is_dir()}
-            if config.storage.media_root is not None else None
-        ),
-        "inboxes": [
-            {"path": inbox.as_posix(), "present": inbox.is_dir()} for inbox in config.storage.inbox
-        ],
         "archive": {
             "enabled": config.archive.enabled,
             "root": config.archive_root.as_posix() if config.archive.enabled else None,
@@ -573,11 +539,6 @@ def _print_storage(report: dict[str, object]) -> None:
         if report["state_dir_override"] is None:
             print("WARN  set state.state_dir to a local directory when the vault is remote")
     print(f"State: {report['state']} ({report['backend']})")
-    media = report["media_root"]
-    if media is not None:
-        print(f"Media root: {media['path']} ({'mounted' if media['mounted'] else 'NOT AVAILABLE'})")
-    for inbox in report["inboxes"]:
-        print(f"Inbox: {inbox['path']} ({'present' if inbox['present'] else 'missing'})")
     archive = report["archive"]
     if archive["enabled"]:
         state = "mounted" if archive["available"] else "NOT AVAILABLE"
@@ -878,107 +839,24 @@ def _gather(config: Config, args: argparse.Namespace) -> int:
 
 
 def _project_step(config: Config, args: argparse.Namespace) -> int:
-    """Everything a project does after gate 1, one command per step."""
+    """Gates 2 and 3, each one status move the person asked for."""
     registry = load_projects(config)
     project = registry.find(args.project_id)
     if project is None:
         raise ValueError(f"no live project with id {args.project_id!r}")
-    handler = {
-        "draft": _draft,
-        "check": _check,
-        "accept": _accept,
-        "adapt": _adapt,
-        "release": _release,
-        "publish": _publish,
-    }[args.command]
+    handler = {"accept": _accept, "publish": _publish}[args.command]
     return handler(config, project, args)
 
 
-def _draft(config: Config, project, args: argparse.Namespace) -> int:
-    target, headings, created = compose_draft(config, project)
-    relative = target.relative_to(config.vault).as_posix()
-    if args.as_json:
-        emit("draft", {"project": project.id, "draft": relative, "headings": headings,
-                       "material": len(project.sources), "created": created})
-        return 0
-    if created:
-        print(f"{project.id}: wrote {relative} ({len(headings)} section(s) from the brief's outline, "
-              f"{len(project.sources)} item(s) of material)")
-        print(f"Write the prose, then run `asterism check {project.id}`.")
-    else:
-        print(f"{project.id}: refreshed the material list in {relative}; the prose was not touched.")
-    return 0
-
-
-def _check(config: Config, project, args: argparse.Namespace) -> int:
-    target, checked = write_draft_gate(config, project)
-    relative = target.relative_to(config.vault).as_posix()
-    if args.as_json:
-        emit("check", {
-            "project": project.id,
-            "sheet": relative,
-            "findings": [{"kind": f.kind, "detail": f.detail} for f in checked.findings],
-            "gathered": checked.gathered,
-            "cited": checked.cited,
-        })
-        return 0
-    print(f"{project.id}: gate 2 in {relative}")
-    print(f"  material: {checked.material}")
-    for finding in checked.findings:
-        print(f"  {finding.kind}: {finding.detail}")
-    if not checked.findings:
-        print("  the checks found nothing")
-    print(f"Answer the questions in the sheet, then run `asterism accept {project.id}`.")
-    return 0
-
-
 def _accept(config: Config, project, args: argparse.Namespace) -> int:
-    moved = pass_gate(config, project, gate="check", status="ready")
+    moved = accept_project(config, project)
     write_views(config, load_projects(config))
     if args.as_json:
         emit("accept", {"project": moved.id, "status": moved.status,
                         "next": NEXT_ACTION[moved.status]})
         return 0
     print(f"{moved.id} is ready; {NEXT_ACTION[moved.status]}.")
-    if moved.platforms:
-        print(f"Write the platform versions with `asterism adapt {moved.id}`.")
-    else:
-        print(f"No platform on the card, so there is nothing to adapt; run `asterism release {moved.id}`.")
     return 0
-
-
-def _adapt(config: Config, project, args: argparse.Namespace) -> int:
-    results = adapt_project(config, project)
-    written = [platform for platform, _path, ok in results if ok]
-    kept = [platform for platform, _path, ok in results if not ok]
-    if args.as_json:
-        emit("adapt", {
-            "project": project.id,
-            "written": written,
-            "kept": kept,
-            "exports": {platform: path.relative_to(config.vault).as_posix()
-                        for platform, path, _ok in results},
-        })
-        return 0
-    for platform, path, ok in results:
-        verb = "wrote" if ok else "kept edited"
-        print(f"  {verb} {platform}: {path.relative_to(config.vault)}")
-    print(f"Rewrite each export to its platform's rules, then run `asterism release {project.id}`.")
-    return 0
-
-
-def _release(config: Config, project, args: argparse.Namespace) -> int:
-    target, missing = write_publish_gate(config, project)
-    relative = target.relative_to(config.vault).as_posix()
-    if args.as_json:
-        emit("release", {"project": project.id, "sheet": relative, "missing": missing},
-             ok=not missing)
-        return 1 if missing else 0
-    print(f"{project.id}: gate 3 in {relative}")
-    for platform in missing:
-        print(f"  missing export: {platform}")
-    print(f"Answer the questions in the sheet, then run `asterism publish {project.id}`.")
-    return 1 if missing else 0
 
 
 def _publish(config: Config, project, args: argparse.Namespace) -> int:
@@ -988,14 +866,13 @@ def _publish(config: Config, project, args: argparse.Namespace) -> int:
         if not url:
             raise ValueError(f"--url takes PLATFORM=URL, not {pair!r}")
         urls[platform] = url
-    published = record_publication(project, urls=urls)
-    moved = pass_gate(config, project, gate="release", status="published", published=published)
+    moved = publish_project(config, project, urls=urls)
     write_views(config, load_projects(config))
     if args.as_json:
         emit("publish", {"project": moved.id, "status": moved.status,
-                         "published": published, "next": NEXT_ACTION[moved.status]})
+                         "published": dict(moved.published), "next": NEXT_ACTION[moved.status]})
         return 0
-    where = ", ".join(sorted(published)) if published else "no platform"
+    where = ", ".join(sorted(moved.published)) if moved.published else "no platform"
     print(f"{moved.id} is published on {where}.")
     print("Nothing was pushed anywhere; the record is on the card.")
     return 0

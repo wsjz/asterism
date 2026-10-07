@@ -47,7 +47,7 @@ def _move(config: Config, project: Project, status: str, source_root: Path, targ
     shutil.move(str(directory), str(target))
 
     moved = replace(project, status=status, directory=target)
-    atomic_write(find_artifact(config.project, target, PROJECT_FILE), moved.to_markdown())
+    atomic_write(find_artifact(target, PROJECT_FILE), moved.to_markdown())
     _prune_empty(directory.parent, source_root)
     return target
 

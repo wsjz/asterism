@@ -108,7 +108,7 @@ def gather_into(
         return Gathered(project=project, added=added, already=already)
 
     gathered = replace(project, sources=project.sources + added)
-    card = find_artifact(config.project, project.directory, PROJECT_FILE)
+    card = find_artifact(project.directory, PROJECT_FILE)
     atomic_write(card, gathered.to_markdown())
     _rewrite_material(config, gathered, card)
     return Gathered(project=gathered, added=added, already=already)
@@ -121,7 +121,7 @@ def _rewrite_material(config: Config, project: Project, card) -> None:
     its heading to the next heading or the end of the file; prose the person
     wrote elsewhere is never touched.
     """
-    brief = find_artifact(config.project, project.directory, BRIEF_FILE)
+    brief = find_artifact(project.directory, BRIEF_FILE)
     try:
         text = brief.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):

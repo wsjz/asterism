@@ -37,7 +37,7 @@ class Angle:
 def _brief_text(config: Config, project: Project) -> str:
     if project.directory is None:
         return ""
-    brief = find_artifact(config.project, project.directory, BRIEF_FILE)
+    brief = find_artifact(project.directory, BRIEF_FILE)
     try:
         return brief.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -134,7 +134,7 @@ def confirm_project(
         status="making",
     )
     atomic_write(
-        find_artifact(config.project, project.directory, PROJECT_FILE),
+        find_artifact(project.directory, PROJECT_FILE),
         confirmed.to_markdown(),
     )
     return confirmed
@@ -183,6 +183,6 @@ def set_fields(
         scheduled=scheduled if scheduled is not None else project.scheduled,
     )
     atomic_write(
-        find_artifact(config.project, project.directory, PROJECT_FILE), updated.to_markdown()
+        find_artifact(project.directory, PROJECT_FILE), updated.to_markdown()
     )
     return updated

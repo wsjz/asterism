@@ -28,9 +28,9 @@ AsterismVault/
 It is also made a Git repository, unless the folder is already inside one, so
 the writing has a history from the first day. Nothing is ever pushed. The rest
 of the top level appears only once there is something in it: `projects/` and
-`picks/` with the first round of sorting, `settings/templates/` and
-`settings/platforms/` with the first project, `trash/` when a project is set
-aside.
+`picks/` with the first round of sorting, `settings/templates/` with the
+first project, `trash/` when a project is set aside. `settings/platforms/` is
+yours to create when you write a platform's rules.
 
 Check the configuration and macOS integration:
 
@@ -204,9 +204,15 @@ in the project card's `status`.
 
 Templates are seeded into the vault the first time they are used
 (`settings/templates/project.md`, `settings/templates/brief-<name>.md`), so editing them
-changes every later project. Status is yours: the machine sets it when it
-creates a project and reads it afterwards, so moving a piece forward is an
-edit in Obsidian.
+changes every later project. Status is yours: it moves at the three gates,
+`confirm`, `accept` and `publish`, or by an edit in Obsidian, and never on its
+own.
+
+How a piece is rewritten for a platform is a note you write yourself,
+`settings/platforms/<platform>.md`: length, opening, what it must have and
+must never do. Whoever writes the platform version, you or an agent, follows
+it into `04-exports/<platform>.md`. Asterism ships no rules, because what works
+on a platform is your judgment.
 
 `--vault` determines the output root. With the command above, Apple Notes are
 written to:

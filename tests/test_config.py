@@ -31,7 +31,6 @@ class ConfigTest(unittest.TestCase):
             initialize_vault(vault, "file")
             config = load_config(vault)
             self.assertEqual(config.vault / "settings" / "templates", config.templates_root)
-            self.assertEqual(config.vault / "settings" / "platforms", config.platforms_root)
 
     def test_a_new_vault_explains_itself(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -110,20 +109,17 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual("12-31", loaded.digest.month.run_on[11])
             self.assertEqual(6, loaded.digest.year.run_on)
 
-    def test_parses_storage_archive_and_state_dir(self) -> None:
+    def test_parses_archive_and_state_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             vault = Path(temporary) / "vault"
             initialize_vault(vault, "sqlite")
             (vault / CONFIG_NAME).write_text(
                 "state:\n  backend: sqlite\n  state_dir: ../local-state\n"
-                "storage:\n  media_root: /Volumes/Content\n  inbox: [inbox, /Volumes/Drop]\n"
                 "archive:\n  enabled: true\n  root: /Volumes/Archive\n  mode: move\n",
                 encoding="utf-8",
             )
             loaded = load_config(vault)
             self.assertEqual((Path(temporary) / "local-state").resolve(), loaded.state_dir)
-            self.assertEqual(Path("/Volumes/Content"), loaded.storage.media_root)
-            self.assertEqual(((vault / "inbox").resolve(), Path("/Volumes/Drop")), loaded.storage.inbox)
             self.assertTrue(loaded.archive.enabled)
             self.assertEqual(Path("/Volumes/Archive"), loaded.archive_root)
             self.assertEqual("move", loaded.archive.mode)

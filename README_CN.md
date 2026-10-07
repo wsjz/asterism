@@ -33,7 +33,7 @@ projects/    一个文件夹一篇作品，从候选选题到发布记录
    **那个标题就是这篇作品。**
 4. **`asterism apply`** 把每个标题变成一个项目，素材跟着进去。
 5. 之后这篇作品有自己的文件夹，文件名按工序编号：
-   `01-project` `02-brief` `03-draft` `04-check` `05-exports` `06-release`。
+   `01-project` `02-brief` `03-draft` `04-exports`。
 
 全程只需要你做三次决定：**这篇要写什么**、**草稿够不够好**、**要不要发出去**。
 没有你点头，什么都不会往前走。
@@ -54,7 +54,7 @@ asterism propose --vault ~/Vault --now              # 写出 picks/<date>.md，�
 # `### 选题` 标题下，然后
 asterism apply --vault ~/Vault                      # 这个标题变成一个候选项目
 asterism confirm <id> --vault ~/Vault --angle 1     # 门 1：确定这篇写什么
-asterism draft <id> --vault ~/Vault                 # 生成 03-draft.md，小节来自 brief 的大纲
+# 在项目文件夹里写 03-draft.md，自己写或交给 agent
 ```
 
 不加 `--now` 时，`propose` 只提供**已经结束的周期**——这是你每隔几天整理一次的
@@ -83,10 +83,14 @@ asterism snapshot --vault V -m "改中间那段之前"
 
 ## 用 agent 驱动
 
+CLI 只负责记账：收集了什么、每条笔记判成了什么、进了哪篇作品、每篇过了哪道门。
+**它从不写正文。** 起草、审稿、按平台改写都是判断，所以放在
+`skills/asterism/SKILL.md` 里，而不是写进代码。
+
 除 `init` 外每个命令都支持 `--json`，输出一个字段稳定的对象，agent 可以直接读
-结果而不是读一段话。`skills/asterism/SKILL.md` 教它整套流程，更重要的是教它**边
-界**：agent 负责分拣、归组、汇集素材、起草、改写平台版本，**并在三道门前各停一
-次，等你回答**。把它复制到 `~/.claude/skills/` 就能配合 Claude Code 使用。
+结果而不是读一段话。这个 skill 教它整套流程，更重要的是教它**边界**：agent 负责
+分拣、归组、汇集素材、起草、改写平台版本，**并在三道门前各停一次，等你回答**。
+把它复制到 `~/.claude/skills/` 就能配合 Claude Code 使用。
 
 ## 目前到哪一步了
 
@@ -95,8 +99,7 @@ asterism snapshot --vault V -m "改中间那段之前"
   一天之内走完全程；它还没有承载过一整周的日常写作，而那才是判定一个阶段完成的
   标准。
 - **还没建的**：work-log 适配器、`assets.md` 素材清单、推送到博客、以及指标和评论
-  回流成新素材。`adapt` 目前只是把正文按各平台的规则分发出去，改写要你或 agent 来
-  做；`publish` 只记录这篇发到了哪里，**不往任何地方推送**。
+  回流成新素材。`publish` 只记录这篇发到了哪里，**不往任何地方推送**。
 
 ## 运行要求
 

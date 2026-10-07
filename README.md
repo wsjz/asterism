@@ -40,7 +40,7 @@ A round takes a few minutes and looks like this:
    one piece beneath a heading you write. That heading is the piece.
 4. **`asterism apply`** turns each heading into a project, carrying its notes.
 5. From there the piece has its own folder, numbered in the order you work:
-   `01-project` `02-brief` `03-draft` `04-check` `05-exports` `06-release`.
+   `01-project` `02-brief` `03-draft` `04-exports`.
 
 You are asked to decide exactly three times: what the piece will be, whether
 the draft is good enough, and whether it goes out. Nothing moves past those
@@ -64,7 +64,7 @@ asterism propose --vault ~/Vault --now              # picks/<date>.md, today's n
 # `### topic` heading of your own, then
 asterism apply --vault ~/Vault                      # the topic becomes a candidate project
 asterism confirm <id> --vault ~/Vault --angle 1     # gate 1: this is the piece
-asterism draft <id> --vault ~/Vault                 # 03-draft.md, its sections from the brief's outline
+# write 03-draft.md in the project's folder, yourself or with an agent
 ```
 
 Without `--now`, `propose` offers only periods that have ended, which is the
@@ -97,12 +97,16 @@ never pushes.
 ## Driving it with an agent
 
 
+The CLI keeps the record: what was collected, what you decided about each
+note, which piece it went into, and which gate each piece has passed. It never
+writes prose. Drafting, checking a draft and rewriting it for a platform are
+judgment, so they live in `skills/asterism/SKILL.md` instead of in code.
+
 Every command except `init` takes `--json` and prints one object with stable
-keys, so an agent can read a result instead of a paragraph. `skills/asterism/SKILL.md`
-teaches one the flow and, more importantly, its boundary: an agent sorts,
-groups, gathers, drafts and adapts, and stops at each of the three gates for
-the person to answer. Copy it into `~/.claude/skills/` to use it with Claude
-Code.
+keys, so an agent can read a result instead of a paragraph. The skill teaches
+one the flow and, more importantly, its boundary: an agent sorts, groups,
+gathers, drafts and adapts, and stops at each of the three gates for the person
+to answer. Copy it into `~/.claude/skills/` to use it with Claude Code.
 
 ## Where it stands
 
@@ -113,9 +117,8 @@ Code.
   sitting; it has not carried a week of ordinary writing, which is the bar the
   roadmap sets for calling a phase finished.
 - **Not built:** work-log adapters, the `assets.md` media manifest, pushing to
-  the blog, and metrics and comments flowing back as material. `adapt` copies
-  the prose under each platform's rules for you or an agent to rewrite;
-  `publish` records where a piece went and never pushes anywhere.
+  the blog, and metrics and comments flowing back as material. `publish`
+  records where a piece went and never pushes anywhere.
 
 ## Requirements
 

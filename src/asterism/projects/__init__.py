@@ -7,7 +7,7 @@ from .lifecycle import drop_project, restore_project
 from .paths import next_id, render_path, unique_directory
 from .registry import Registry, load_projects
 from .scaffold import create_project, ensure_template, render_template
-from .stages import ARTIFACT_ORDER, artifact_path, find_artifact, stage_directory, stage_for_artifact
+from .stages import ARTIFACT_ORDER, artifact_path, find_artifact
 
 __all__ = [
     "Angle",
@@ -36,8 +36,6 @@ __all__ = [
     "restore_project",
     "set_fields",
     "split_front_matter",
-    "stage_directory",
-    "stage_for_artifact",
     "unique_directory",
     "write_views",
 ]

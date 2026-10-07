@@ -38,6 +38,11 @@ trustworthy pipeline over a broad platform.
   `origin` in the front matter records which.
 - The pipeline must be fully usable without an LLM. An LLM only enhances a
   deterministic artifact and is off by default.
+- The CLI keeps the record and never writes prose: collection, digests, the
+  decision on every note, project cards and the three gates (`confirm`,
+  `accept`, `publish`). Drafting, checking a draft and rewriting it for a
+  platform are judgment; they belong to `skills/asterism/SKILL.md`, done by a
+  person or an agent, and are not moved back into code.
 - Ownership of a content project's fields is split, never shared: the vault
   owns content and machine facts, Notion (from Phase 2) owns management
   fields; each field flows one way.

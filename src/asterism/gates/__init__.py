@@ -1,12 +1,5 @@
 """Decision gates: the few places where the pipeline waits for a person."""
-from .project import (
-    Answer,
-    pass_gate,
-    read_answer,
-    record_publication,
-    write_draft_gate,
-    write_publish_gate,
-)
+from .project import accept_project, publish_project, record_publication
 from .picks import (
     SECTIONS,
     Line,
@@ -22,21 +15,18 @@ from .picks import (
 )
 
 __all__ = [
-    "Answer",
     "Line",
     "SECTIONS",
     "Sheet",
+    "accept_project",
     "apply_sheet",
     "build_sheet",
     "coverage",
     "days_since_last",
     "latest_sheet",
-    "pass_gate",
     "path_index",
-    "read_answer",
+    "publish_project",
     "read_sheet",
     "record_publication",
     "sheets",
-    "write_draft_gate",
-    "write_publish_gate",
 ]

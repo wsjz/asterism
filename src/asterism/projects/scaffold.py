@@ -101,8 +101,8 @@ def create_project(
     brief_text = render_template(
         ensure_template(config, brief_template_name(config, pillar, type_)).read_text(encoding="utf-8"), values
     )
-    atomic_write(find_artifact(config.project, directory, PROJECT_FILE), project.with_body(card_body).to_markdown())
-    atomic_write(find_artifact(config.project, directory, BRIEF_FILE), brief_text.rstrip() + "\n")
+    atomic_write(find_artifact(directory, PROJECT_FILE), project.with_body(card_body).to_markdown())
+    atomic_write(find_artifact(directory, BRIEF_FILE), brief_text.rstrip() + "\n")
     return replace(project, body=card_body)
 
 
@@ -147,8 +147,8 @@ def _quote_source(config: Config, relative: str, card: Path) -> str:
 
 
 def _values(config: Config, project: Project, directory: Path) -> dict[str, str]:
-    card = find_artifact(config.project, directory, PROJECT_FILE)
-    brief_relative = (find_artifact(config.project, directory, BRIEF_FILE)).relative_to(config.vault).as_posix()
+    card = find_artifact(directory, PROJECT_FILE)
+    brief_relative = (find_artifact(directory, BRIEF_FILE)).relative_to(config.vault).as_posix()
     quoted = quote_sources(config, project.sources, card)
     return {
         "id": project.id,

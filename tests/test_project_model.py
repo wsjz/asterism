@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from asterism.config import CONFIG_NAME, ConfigError, initialize_vault, load_config
-from asterism.projects import Project, ProjectError, artifact_path, stage_directory
+from asterism.projects import Project, ProjectError, artifact_path
 
 
 CARD = """---
@@ -99,27 +99,20 @@ class ProjectConfigTest(unittest.TestCase):
         self.assertEqual(("tutorial", "opinion"), config.content.types)
         self.assertIn("blog", config.content.platforms)
         self.assertEqual("{year}/{date}-{title}", config.project.path)
-        self.assertEqual("01-brief", stage_directory(config.project, config.project.stages[0]))
-        # flat keeps the files together and numbers them in production order
-        self.assertEqual("01-project.md", artifact_path(config.project, "project.md"))
-        self.assertEqual("03-draft.md", artifact_path(config.project, "draft.md"))
-        self.assertEqual("05-exports/blog.md", artifact_path(config.project, "exports/blog.md"))
+        # the files sit together, numbered in production order
+        self.assertEqual("01-project.md", artifact_path("project.md"))
+        self.assertEqual("03-draft.md", artifact_path("draft.md"))
+        self.assertEqual("04-exports/blog.md", artifact_path("exports/blog.md"))
 
-    def test_staged_layout_and_unnumbered_stages(self) -> None:
+    def test_a_vault_with_the_old_layout_settings_still_loads(self) -> None:
         config = self._load(
             "project:\n"
             "  layout: staged\n"
             "  numbered: false\n"
             "  path: '{pillar}/{date}-{title}'\n"
-            "  stages:\n"
-            "    - { key: brief, artifacts: [project.md, brief.md] }\n"
-            "    - { key: media, media: [photo], dir: Media }\n"
-            "    - { key: export, media_per_platform: true }\n"
-            "  bindings: { platform_exports: export, unassigned_media: media }\n"
+            "  stages: [{ key: brief, artifacts: [project.md, brief.md] }]\n"
         )
-        self.assertEqual("brief/project.md", artifact_path(config.project, "project.md"))
-        self.assertEqual("Media", stage_directory(config.project, config.project.stages[1]))
-        self.assertEqual("media", config.project.bound_stage("unassigned_media").key)
+        self.assertEqual("{pillar}/{date}-{title}", config.project.path)
 
     def test_rejects_bad_content_and_project_settings(self) -> None:
         cases = [
@@ -130,10 +123,6 @@ class ProjectConfigTest(unittest.TestCase):
             ("project:\n  path: '{year}/{month}-{title}'\n", "unknown placeholders"),
             ("project:\n  path: '{year}/{date}'\n", "{title} or {id}"),
             ("project:\n  id_format: '{year}'\n", "{seq}"),
-            ("project:\n  layout: nested\n", "layout"),
-            ("project:\n  stages: [{ key: a }]\n  bindings: { covers: b }\n", "configured stages"),
-            ("project:\n  stages: [{ key: a }]\n  bindings: { platform_exports: a }\n", "media_per_platform"),
-            ("project:\n  stages: [{ key: a, artifacts: ['../x.md'] }]\n", "relative path"),
         ]
         for text, needle in cases:
             with self.assertRaises(ConfigError, msg=text) as raised:

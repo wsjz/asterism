@@ -9,6 +9,11 @@ Asterism turns scattered notes into published content. It is a CLI over a
 Markdown vault: every stage reads and writes files, and nothing is hidden in a
 database. You drive it; you are not inside it.
 
+The CLI keeps the record: what was collected, what was decided about each note,
+which project it went into, and which gate each piece has passed. It never
+writes prose. Grouping, drafting, checking a draft and rewriting it for a
+platform are judgment, and they are yours, as this file describes.
+
 Pass `--vault <path>` to every command and `--json` whenever you need to parse
 the result. `--json` prints one object with `command` and `ok`; an error prints
 the same shape with `error`.
@@ -16,8 +21,8 @@ the same shape with `error`.
 ## The flow
 
 ```text
-sync ──► review ──► apply ──► confirm ──► gather ──► draft ──► check ──► adapt ──► release
-         (sort)     (candidates) GATE 1              (material) (draft)  GATE 2     GATE 3
+sync ──► propose ──► apply ──► confirm ──► gather ──► draft ──► accept ──► adapt ──► publish
+         (sort)     (candidates)  GATE 1   (material)  (you)     GATE 2     (you)     GATE 3
 ```
 
 ## What you do at each step
@@ -88,32 +93,54 @@ pieces assembled from a period of material, such as a monthly report, since
 sorting only ever offers an item once. Add `--dry-run` first. Gathering does
 not change what was decided about those notes.
 
-**8. Outline, then draft.** Before `draft`, fill the brief's `## Outline` with
-the sections the piece will have, one per line. `asterism draft <id>` copies
-exactly those and adds `## Material`; it never copies the brief's planning
-headings. Once the draft exists it belongs to the writer: running `draft` again
-only refreshes the material list.
+**8. Outline, then draft.** Fill the brief's `## Outline` with the sections the
+piece will have, one per line. Then write `03-draft.md` in the project folder:
+the title as `# `, the card's promise in italics under it, and one `## ` per
+outline line. Never copy the brief's planning headings (Core question,
+Audience): no finished piece has a section by those names. Where the prose uses
+a fragment, link it (`[[notes/...|words]]`, or a Markdown link when the
+vault sets `links: markdown`); that is how the person checks
+where a claim came from.
 
-**9. Review, adapt, publish.** `check`, `adapt` and `release`
-carry the piece the rest of the way. `check` writes `04-check.md` and `release`
-writes `06-release.md`, both inside the project folder: each lists what the machine
-could verify and asks three questions as checkboxes. Prepare them; the person
-ticks them. `accept` and `publish` refuse while any box is unticked.
+Once the draft exists it belongs to the writer. Do not restructure, regenerate
+or rewrite it unless asked, and run `asterism snapshot -m "<why>"` before a
+large edit you were asked for. `gather` refreshes the brief's source list and
+never touches the draft.
 
-`check` reports how much of the gathered material the piece cites. A low number
-is normal — a month of notes yields one thread — and only a piece citing none of
-its material is reported as a fault. `adapt` copies `settings/platforms/<platform>.md`
-into each export so its rules are in front of you while you rewrite. Each
-export carries a fingerprint of what `adapt` wrote; the moment the file differs
-from it, `adapt` treats the file as the person's and leaves it alone, so a
-rewrite is never lost whether or not the rules comment was deleted.
+**9. Prepare gate 2, then stop.** Read the draft against its card and tell the
+person, in the conversation rather than in a file:
+
+- sections that have no prose yet;
+- whether it keeps the card's `promise`, or that the card has none;
+- how many of the gathered notes it links: a low number is normal, since a
+  month of notes yields one thread, but linking none is worth saying;
+- claims that need a source and have none.
+
+Then ask whether it is good enough. Run `asterism accept <id>` only when they
+say it is.
+
+**10. Adapt.** The card's `platforms` say where the piece goes; change them with
+`asterism set <id> --platform X` when the person names them. For each one,
+write `04-exports/<platform>.md` following `settings/platforms/<platform>.md`.
+Those rules are the person's taste: when the file does not exist, keep the
+draft's prose as it is and say the rules are missing; never invent them. An
+export that already exists is the person's: never overwrite it, and rewrite it
+in place only when asked.
+
+**11. Gate 3, then stop.** List the exports, and any platform on the card that
+has none, and ask whether it goes out. The person posts it; nothing is pushed
+from here. When they say it went out, run `asterism publish <id> --url
+<platform>=<url>` with each link they give you. A piece with no platform, such as
+a report for one person, finishes with a plain `publish`.
 
 ## Boundaries
 
-- **Never pass a gate.** `confirm`, the gate-2 acceptance and the gate-3
-  publication are the three questions the person owns. Prepare them, present
-  them, wait.
+- **Never pass a gate.** `confirm --angle N`, `accept` and `publish` are the
+  person's three answers. Prepare each question, present it, and run the
+  command only once they have answered it.
 - **Never edit `notes/`.** Change the sheet, the briefs, the drafts.
+- **Never overwrite the person's writing.** A draft or an export they have
+  worked on is edited in place, only when asked, after a snapshot.
 - **Never delete.** No command deletes anything; do not work around that.
 - Leave the sheet parseable: a line is recognized by the note it links to, so
   keep the link and reword freely around it.
@@ -127,9 +154,11 @@ rewrite is never lost whether or not the rules comment was deleted.
 | `notes/<source>/origin/` | collected items, one file each, mirrored |
 | `notes/<source>/digest/` | daily, weekly, monthly rollups |
 | `picks/<date>.md` | the sorting sheet; `kind: sort`, `state: open` or `applied` |
-| `projects/<year>/<date>-<title>/` | a project, its files numbered in production order: `01-project.md`, `02-brief.md`, `03-draft.md`, `04-check.md`, `05-exports/`, `06-release.md` |
+| `projects/<year>/<date>-<title>/` | a project, its files numbered in production order: `01-project.md` (the card), `02-brief.md`, `03-draft.md`, `04-exports/<platform>.md`. A project from before this layout may also hold `04-check.md`, `05-exports/` and `06-release.md`; leave them, and read its exports from `05-exports/` |
 | `projects/INDEX.md` | every project as a table |
-| `asterism.yaml` | pillars, types, platforms, review rules |
+| `settings/platforms/<platform>.md` | the person's rules for rewriting a piece for that platform |
+| `settings/templates/` | the card and brief templates new projects start from |
+| `asterism.yaml` | pillars, types, platforms, picks rules |
 
 `asterism status --json` and `asterism week --json` answer what exists and what
 each project is waiting for without reading any of it.
